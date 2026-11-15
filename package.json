@@ -1,0 +1,16 @@
+{
+  "name": "genjimonogatari",
+  "version": "0.1.0",
+  "description": "源氏物語（桐壺・若紫）を、物語を読み進めながら要所で3Dの舞台を操作して学ぶ古文の学習ゲーム",
+  "private": true,
+  "scripts": {
+    "verify": "node tools/verify-data.cjs",
+    "test": "node tools/verify-data.cjs && node --test tests/*.test.cjs",
+    "test:browser": "node tests/browser-smoke.cjs",
+    "build": "node tools/build.mjs"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}

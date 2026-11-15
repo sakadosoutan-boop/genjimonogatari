@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 帖データの検証と、進行・保存・学習機能の回帰テスト
+        run: npm test
+      - name: 配布用の一枚HTMLが最新か
+        run: node tools/build.mjs --check
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 日本語フォント
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - name: Playwright と Chromium
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: 実ブラウザーでの画面確認（PC・スマホ縦・3D）
+        run: npm run test:browser
