@@ -327,7 +327,7 @@
       }
       beam(g, f[0], FENCE_Z + 0.05, f[1], FENCE_Z + 0.05, gy + top * 0.42, 0.05, K.mat('#9a8a5a')); if (f[2]) beam(g, f[0], FENCE_Z + 0.05, f[1], FENCE_Z + 0.05, gy + top * 0.8, 0.05, K.mat('#9a8a5a'));
     });
-    for (var x = d.sx - 2.5; x < FENCE_Z; x += 0.1) { var hh = 1.2 * (0.85 + r() * 0.2); K.bx(g, 0.035, hh, 0.035, m.shiba, -8 + (r() - 0.5) * 0.06, gy + hh / 2, x - 2.5 > FENCE_Z ? 0 : x * 0 + (x - (d.sx - 2.5)) * 0 + (FENCE_Z - (x - (d.sx - 2.5)))); }
+    for (var fz2 = -1.5; fz2 < FENCE_Z; fz2 += 0.1) { var hh = 1.2 * (0.85 + r() * 0.2); K.bx(g, 0.035, hh, 0.035, m.shiba, -8 + (r() - 0.5) * 0.06, gy + hh / 2, fz2); }
     /* 夕暮れの霞 */
     kasumi(g, env, -2, 1.8, FENCE_Z + 3.5, 26, 5); kasumi(g, env, 5, 2.6, -7, 30, 7);
     d.slots.kami = [-0.7, 0.75, 0.75, 0.065]; d.slots.kamiL = [-2.3, 0.6, 1.4, 0]; d.slots.kamiR = [0.9, 0.6, 0.1, 0];
