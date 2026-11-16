@@ -142,3 +142,9 @@ activity(kind, cfg, cb)         // 3D の遊びを始める。→ { stop() }
 - 原文は新編日本古典文学全集など一般的な校訂本文に近い形で引く。出典の確認方法と、判断に迷った点は `docs/KOUSHOU.md` に書く。
 - 文法（品詞分解・敬意の方向）は**先生が最終確認する前提**。自信のない箇所は `docs/KOUSHOU.md` の「要確認」に挙げる。
 - 女性の人物を軽く扱わない。後宮のいじめ・病・死は原文の重さのまま、扇情的にせず書く。
+
+## 3D の遊びの差し込み口（実装メモ）
+
+- 3D の遊びは `GENJI.S3A[kind] = function (ctx, act, cfg, cb, finish)`（`stage3d-activities.js`）。`act.frame(dt, t)` を置くと、その間のカメラは遊び側が動かす。`act.cleanup` で後始末。終わりは `finish(result)`。
+- 遊びの補助ボタン（自動で歩く・手がかり）には `data-a3="auto"` をつける（タッチやキーボードが使いにくい生徒のための道でもあり、自動テストもこれを押す）。
+- `wataru` は `cfg.stage` が `kokyu` なら桐壺から清涼殿まで全行程、`watadono` なら途中の廊ひとつ分を歩く。
