@@ -220,7 +220,7 @@
       sunoko: [sx + 0.7, -0.9, PI / 2, -0.1], niwa: [sx - 2.8, 0.8, PI / 2, -FH], misu: [x0 - 1.1, -1.5 * KEN, PI / 2 + 0.2], to: [rx - 0.5, 1.15, -PI / 2]
     };
     return { g: g, slots: slots, x0: x0, x1: x1, z0: z0, lx: lx, sx: sx, fz: fz, sz: sz, rx: rx,
-      cam: { t: [-1.3, 0.5, -0.5], az: 0.4, el: 0.86, rh: 8.6, rv: 5.6 }, figScale: 1, focusDist: 5.2, shadowR: 11, amb: { x: sx - 4, z: 0, r: 7, y: 6 } };
+      cam: { t: [-1.0, 0.5, -0.9], az: 0.42, el: 0.7, rh: 7.3, rv: 4.3 }, figScale: 1.22, focusDist: 5.6, shadowR: 11, amb: { x: sx - 4, z: 0, r: 7, y: 6 } };
   }
   function finish(d, env) { K.bake(d.g); d.sway = env.sway; d.lamps = env.lamps; d.drift = env.drift; return d; }
   function sl(d, name, x, z, ry, y) { d.slots[name] = [x, z, ry || 0, y || 0]; }

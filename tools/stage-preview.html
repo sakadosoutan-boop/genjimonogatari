@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>3D 舞台の確認（stage-preview）</title>
+<link rel="stylesheet" href="../src/styles/stage3d.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #222; font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif; }
+  #gj-stage { position: fixed; inset: 0; }
+  /* 文字の窓の代役（画面の下 4 割） */
+  #win { position: fixed; left: 0; right: 0; bottom: 0; height: 40%; box-sizing: border-box; padding: 12px 16px; background: rgba(250,245,230,.93); border-top: 3px double #5c3f2a; color: #2a2018; font-size: 17px; line-height: 1.7; overflow: auto; z-index: 5; }
+  #win .who { font-weight: 700; color: #7d4f9e; margin-right: .6em; }
+  #win .gen { color: #5a2a2a; }
+  #win button.next { float: right; font: inherit; padding: 2px 14px; }
+  #win small { color: #776; }
+  #panel { position: fixed; right: 6px; top: 6px; z-index: 9; background: rgba(255,255,255,.93); border: 1px solid #887; border-radius: 6px; padding: 6px 8px; font: 12px/1.5 system-ui, sans-serif; max-width: min(96vw, 520px); max-height: 56vh; overflow: auto; }
+  #panel summary { cursor: pointer; font-weight: 700; }
+  #panel select, #panel button, #panel input { font: inherit; margin: 1px; }
+  #panel .row { margin: 3px 0; }
+  body.bare #panel { display: none; } body.nowin #win { display: none; }
+</style>
+</head>
+<body>
+<div id="gj-stage"></div>
+<div id="win"><small>ここは文字の窓の代役です（下 4 割）。右上のパネルで舞台・光・季節・人物・姿勢・効果・矢印・遊びを切り替えます。</small></div>
+<details id="panel" open>
+  <summary>舞台の確認</summary>
+  <div class="row">舞台 <select id="stage"></select> 光 <select id="light"></select> 季節 <select id="season"></select> 画質 <select id="q"><option>high</option><option>low</option></select></div>
+  <div class="row">配役 <select id="preset"></select> <button id="allc">全人物をめぐる</button></div>
+  <div class="row">人物 <select id="who"></select> 姿勢 <select id="pose"></select> <button id="focus">寄る</button> <button id="wide">引く</button> <button id="speak">話す</button> <button id="posec">全姿勢をめぐる</button></div>
+  <div class="row">効果 <span id="fx"></span><button data-fx="clear">clear</button></div>
+  <div class="row">矢印 <button id="arr1">尊敬 語り手→</button> <button id="arr2">謙譲 人→人</button> <button id="arr3">三種</button> <button id="arr0">消す</button></div>
+  <div class="row">遊び <button id="act1">wataru（渡る）</button> <button id="act2">kaimami（垣間見）</button> <button id="act0">やめる</button></div>
+  <div class="row" id="stat"></div>
+</details>
+<script src="../src/vendor/three.min.js"></script>
+<script src="../src/js/core.js"></script>
+<script src="../src/data/chars.js"></script>
+<script src="../src/data/stage-spec.js"></script>
+<script src="../src/js/stage3d-kit.js"></script>
+<script src="../src/js/stage3d-figures.js"></script>
+<script src="../src/js/stage3d-sets.js"></script>
+<script src="../src/js/stage3d-activities.js"></script>
+<script src="../src/js/stage3d.js"></script>
+<script>
+(function () {
+  'use strict';
+  var G = window.GENJI, St = G.Stage3D, spec = G.stageSpec, $ = function (id) { return document.getElementById(id); };
+  var q = {}; location.search.slice(1).split('&').forEach(function (kv) { var p = kv.split('='); if (p[0]) q[p[0]] = decodeURIComponent(p[1] || ''); });
+  if (q.bare) document.body.classList.add('bare'); if (q.nowin) document.body.classList.add('nowin');
+  /* 舞台ごとの配役の見本 */
+  var PRESET = {
+    kiritsubo: [{ id: 'koui', at: 'kami' }, { id: 'mikado', at: 'kamiR' }, { id: 'nyobo', at: 'shimoL' }, { id: 'wakamiya', at: 'nakaL' }, { id: 'myobu', at: 'shimo' }],
+    seiryoden: [{ id: 'mikado', at: 'kami' }, { id: 'koui', at: 'naka' }, { id: 'kandachime', at: 'shimo' }, { id: 'myobu', at: 'nakaR' }, { id: 'fujitsubo', at: 'misu' }, { id: 'ichinomiya', at: 'nakaL' }],
+    kokiden:   [{ id: 'kokiden', at: 'kami' }, { id: 'kata', at: 'nakaL' }, { id: 'nyobo', at: 'shimoR' }, { id: 'ichinomiya', at: 'kamiL' }],
+    watadono:  [{ id: 'koui', at: 'naka', pose: 'stand' }, { id: 'nyobo', at: 'shimo', pose: 'stand' }, { id: 'kata', at: 'misu', pose: 'fan' }, { id: 'kokiden', at: 'oku', pose: 'stand' }],
+    sato:      [{ id: 'haha', at: 'kami', pose: 'weep' }, { id: 'myobu', at: 'naka' }, { id: 'koui', at: 'kamiL', pose: 'lie' }, { id: 'nyobo', at: 'shimoR' }],
+    kokyu:     [{ id: 'mikado', at: 'seiryoden' }, { id: 'kokiden', at: 'kokiden' }, { id: 'koui', at: 'kiritsubo' }, { id: 'kata', at: 'michi2' }],
+    kitayama:  [{ id: 'genji', at: 'takami' }, { id: 'koremitsu', at: 'nakaL' }, { id: 'hijiri', at: 'iwaya', pose: 'pray' }, { id: 'sozu', at: 'sakamichi' }],
+    soubou:    [{ id: 'amagimi', at: 'kami' }, { id: 'murasaki', at: 'kamiR', pose: 'stand' }, { id: 'shonagon', at: 'naka' }, { id: 'otona', at: 'nakaR' }, { id: 'inuki', at: 'shimo', pose: 'stand' }, { id: 'warawabe', at: 'shimoR', pose: 'stand' }, { id: 'genji', at: 'kaki', pose: 'peek' }, { id: 'koremitsu', at: 'kakiR', pose: 'stand' }]
+  };
+  var WATARU = { stage: 'kokyu', from: 'kiritsubo', to: 'seiryoden', intro: '帝のお召しがあった。桐壺から清涼殿へ、渡殿を渡ってゆく。',
+    outro: 'ようやく清涼殿の上の御局に着いた。',
+    events: [ { at: 0.18, kind: 'whisper', w: 'kata', x: '「また、あの方がお通りになる」――戸の内から、ひそひそと声がする。', fx: { soshiri: 1 } },
+              { at: 0.4, kind: 'dirt', x: '打橋・渡殿のここかしこの道に、あやしきわざをしつつ……送り迎えの人の衣の裾が、たえがたいほどに。', fx: { soshiri: 1 } },
+              { at: 0.62, kind: 'block', x: '馬道の戸を、こなたかなた心を合わせて鎖しこめられた。進むことも戻ることもできない。', fx: { soshiri: 2 } },
+              { at: 0.85, kind: 'door', w: 'nyobo', x: '「こちらでございます」。女房が戸を開けた。' } ] };
+  var KAIMAMI = { stage: 'soubou', intro: '夕暮れの霞にまぎれて、小柴垣のもとに立ち寄り、のぞいてみる。', outro: '「さても、いとうつくしかりつる児かな」。',
+    targets: [ { id: 'amagimi', label: '尼君', x: '中の柱に寄りゐて、脇息の上に経を置きて、いとなやましげに読みゐたる尼君、ただ人と見えず。', yaku: '中の柱に寄りかかって座り、脇息の上に経を置いて、たいそうつらそうに読んでいる尼君は、普通の身分の人とは見えない。', gen: 'w03' },
+               { id: 'otona', label: '女房', x: 'きよげなる大人二人ばかり、', yaku: 'こざっぱりと美しい年配の女房が二人ほど、' },
+               { id: 'warawabe', label: '童べ', x: 'さては童べぞ出で入り遊ぶ。', yaku: 'それから童女たちが出たり入ったりして遊んでいる。' },
+               { id: 'murasaki', label: '女子', x: '中に十ばかりやあらむと見えて、白き衣、山吹などのなえたる着て、走り来たる女子、', yaku: 'その中に、十歳くらいであろうかと見えて、白い下着に山吹襲などの着なれたのを着て、走ってきた女の子は、', gen: 'w04' } ] };
+
+  function opt(sel, list, val) { sel.innerHTML = list.map(function (v) { return '<option' + (v === val ? ' selected' : '') + '>' + v + '</option>'; }).join(''); }
+  var stages = Object.keys(spec.stages), cur = { stage: q.stage || 'kiritsubo', light: q.light || 'day', season: q.season || 'spring' };
+  opt($('stage'), stages, cur.stage); opt($('light'), spec.lights, cur.light); opt($('season'), spec.seasons, cur.season); opt($('pose'), spec.poses, 'sit');
+  opt($('preset'), ['見本', 'なし'].concat(Object.keys(G.chars).filter(function (k) { return G.chars[k].look; })), '見本');
+  $('fx').innerHTML = spec.fx.map(function (f) { return '<button data-fx="' + f + '">' + f + '</button>'; }).join('');
+
+  var win = $('win'), pending = null;
+  function show(m, done) {
+    var c = m.w && G.chars[m.w];
+    win.innerHTML = (c ? '<span class="who">' + c.name + '</span>' : '') + '<span class="' + (m.src === 'gen' ? 'gen' : '') + '">' + G.rich(m.x || '') + '</span>' + (done ? ' <button class="next">▼ 次へ</button>' : '');
+    pending = done || null;
+    if (done && q.auto) setTimeout(function () { if (pending === done) { pending = null; done(); } }, +q.auto || 600);
+  }
+  win.addEventListener('click', function () { if (pending) { var d = pending; pending = null; win.innerHTML = '<small>……</small>'; d(); } });
+  var cb = { pov: 'koui',
+    say: function (m) { return new Promise(function (res) { show(m, res); }); },
+    meter: function (o) { $('stat').textContent = 'meter ' + JSON.stringify(o); },
+    gen: function (g) { $('stat').textContent = '原文帳に綴じる ' + g; },
+    done: function (r) { window.__done = r; show({ x: '（遊びの終わり）' + JSON.stringify(r) }); } };
+
+  function castOf() {
+    var p = $('preset').value;
+    if (q.cast) return q.cast.split(',').map(function (s) { var a = s.split(':'); return { id: a[0], at: a[1] || undefined, pose: a[2] || undefined }; });
+    if (p === 'なし') return [];
+    if (p === '見本') return PRESET[cur.stage] || [];
+    return [{ id: p, at: 'naka' }, { id: p === 'koui' ? 'nyobo' : 'koui', at: 'nakaR' }];
+  }
+  function apply() {
+    cur.stage = $('stage').value; cur.light = $('light').value; cur.season = $('season').value;
+    var cast = castOf();
+    St.setScene({ stage: cur.stage, light: cur.light, season: cur.season, cast: cast });
+    opt($('who'), cast.map(function (c) { return c.id; }), cast[0] && cast[0].id);
+  }
+  if (!St.supported()) { win.textContent = 'WebGL が使えません（supported() = false）'; return; }
+  St.mount($('gj-stage'), { quality: q.q || 'high', panel: q.nowin ? 0 : 0.4 }); $('q').value = q.q || 'high';
+  apply();
+  ['stage', 'light', 'season', 'preset'].forEach(function (id) { $(id).onchange = apply; });
+  $('q').onchange = function () { St.setQuality($('q').value); };
+  $('pose').onchange = function () { St.pose($('who').value, $('pose').value); };
+  $('focus').onclick = function () { St.focus($('who').value); };
+  $('wide').onclick = function () { St.focus('wide'); St.speak(null); };
+  $('speak').onclick = function () { St.speak($('who').value); };
+  $('panel').addEventListener('click', function (e) { var f = e.target.getAttribute && e.target.getAttribute('data-fx'); if (f) St.fx(f); });
+  var timer = null;
+  $('posec').onclick = function () { var i = 0; clearInterval(timer); timer = setInterval(function () { var p = spec.poses[i++ % spec.poses.length]; $('pose').value = p; St.pose($('who').value, p); }, 1400); };
+  $('allc').onclick = function () {
+    var ids = Object.keys(G.chars).filter(function (k) { return G.chars[k].look; }), i = 0; clearInterval(timer);
+    timer = setInterval(function () { var a = ids[i++ % ids.length], b = ids[i % ids.length]; St.setScene({ stage: cur.stage, light: cur.light, season: cur.season, cast: [{ id: a, at: 'nakaL' }, { id: b, at: 'nakaR' }] }); show({ x: G.chars[a].full + '　／　' + G.chars[b].full }); }, 1800);
+  };
+  function A(list) { return function () { St.arrows(list); }; }
+  function ids() { return castOf().map(function (c) { return c.id; }); }
+  $('arr1').onclick = function () { St.arrows([{ from: 'kataribe', to: ids()[0], kind: 'sonkei' }]); };
+  $('arr2').onclick = function () { var i = ids(); St.arrows([{ from: i[1], to: i[0], kind: 'kenjo' }]); };
+  $('arr3').onclick = function () { var i = ids(); St.arrows([{ from: 'kataribe', to: i[0], kind: 'sonkei' }, { from: i[1], to: i[0], kind: 'kenjo' }, { from: i[2] || i[1], to: i[1], kind: 'teinei' }]); };
+  $('arr0').onclick = A(null);
+  var act = null;
+  $('act1').onclick = function () { window.__done = null; act = St.activity('wataru', WATARU, cb); };
+  $('act2').onclick = function () { window.__done = null; act = St.activity('kaimami', KAIMAMI, cb); };
+  $('act0').onclick = function () { if (act) act.stop(); };
+  /* URL で指定（自動の撮影用）：?stage=&light=&season=&cast=id:at:pose,…&focus=&speak=&fx=&arrows=1&act=wataru|kaimami&auto=ms&bare=1&q=low */
+  if (q.focus) St.focus(q.focus); if (q.speak) St.speak(q.speak); if (q.fx) q.fx.split(',').forEach(St.fx);
+  if (q.arrows) $('arr3').onclick();
+  if (q.act) $(q.act === 'kaimami' ? 'act2' : 'act1').onclick();
+  window.__preview = { WATARU: WATARU, KAIMAMI: KAIMAMI, PRESET: PRESET, cb: cb };
+  setInterval(function () { var s = St._state; if (s.ms != null && !q.bare) $('stat').title = s.ms.toFixed(1) + 'ms'; }, 1000);
+})();
+</script>
+</body>
+</html>

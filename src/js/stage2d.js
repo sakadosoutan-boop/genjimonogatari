@@ -386,12 +386,14 @@
     targets.forEach(function (t, k) { if (!S.cast[t.id]) { addDoll(t.id, AUTO[k % AUTO.length], 'sit'); } });
     sortDolls();
     function draw() {
-      var k = '<div class="gj-s2-kaki" aria-hidden="true"></div>';
+      // 垣は人数ぶんの帯。のぞいた帯は開いて、向こうが見える
+      var k = '', wd = 100 / targets.length;
       targets.forEach(function (t, j) {
-        var left = (j + .5) / targets.length * 100;
+        var left = (j + .5) * wd;
         k += j < found
-          ? '<span class="gj-s2-gap open" style="left:' + left + '%"><b>' + esc(t.label || charOf(t.id).name) + '</b></span>'
-          : '<button type="button" class="gj-s2-gap" data-s2="gap" style="left:' + left + '%" aria-label="垣の隙間からのぞく">隙間</button>';
+          ? '<span class="gj-s2-seen" style="left:' + left + '%"><b>' + esc(t.label || charOf(t.id).name) + '</b></span>'
+          : '<div class="gj-s2-kaki" aria-hidden="true" style="left:' + (j * wd) + '%;width:' + (wd + .2) + '%"></div>' +
+            '<button type="button" class="gj-s2-gap" data-s2="gap" style="left:' + left + '%" aria-label="垣の隙間からのぞく">隙間</button>';
       });
       S.over.innerHTML = k;
       Array.prototype.forEach.call(S.over.querySelectorAll('[data-s2="gap"]'), function (b) { b.onclick = peek; });

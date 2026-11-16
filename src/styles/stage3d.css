@@ -1,0 +1,91 @@
+/* 3D 舞台（GENJI.Stage3D）の見た目。クラスはすべて gj3-。
+ * 敬意の矢印の色と凡例はここで決める：尊敬＝紫、謙譲＝藍、丁寧＝萌黄。 */
+.gj3-root {
+  --gj3-sonkei: #7d4f9e;
+  --gj3-kenjo: #2f5d8c;
+  --gj3-teinei: #6f9a3c;
+  --gj3-panel: 40%;           /* 文字の窓の高さ（操作はこの上に置く） */
+  --gj3-kin: #c9a44a;
+  position: absolute; inset: 0; overflow: hidden; background: #eadfc2;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", "Noto Serif CJK JP", serif;
+}
+.gj3-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+/* 画面の上端にかかる金雲（すやり霞）と、紙の縁のかげり */
+.gj3-kumo { position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 30% at 12% -8%, rgba(214,182,96,.9) 0 46%, rgba(214,182,96,0) 62%),
+    radial-gradient(90% 22% at 78% -6%, rgba(222,192,110,.85) 0 44%, rgba(222,192,110,0) 60%),
+    radial-gradient(140% 120% at 50% 40%, rgba(0,0,0,0) 62%, rgba(60,40,20,.2) 100%); }
+.gj3-root[data-light="night"] .gj3-kumo, .gj3-root[data-light="moon"] .gj3-kumo {
+  background:
+    radial-gradient(120% 30% at 12% -8%, rgba(120,104,70,.75) 0 46%, rgba(120,104,70,0) 62%),
+    radial-gradient(90% 22% at 78% -6%, rgba(132,116,80,.7) 0 44%, rgba(132,116,80,0) 60%),
+    radial-gradient(140% 120% at 50% 40%, rgba(0,0,0,0) 55%, rgba(6,8,20,.5) 100%); }
+.gj3-root[data-light="dusk"] .gj3-kumo { filter: saturate(1.15) hue-rotate(-8deg); }
+
+/* 夕月夜の月（moon の光のときだけ） */
+.gj3-moon { position: absolute; left: 9%; top: 7%; width: clamp(34px, 7vmin, 64px); aspect-ratio: 1; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle at 42% 40%, #fbf8e6 0 55%, #e9e2bc 100%); box-shadow: 0 0 28px 10px rgba(240,236,200,.35); transition: opacity .8s; }
+.gj3-root[data-light="moon"] .gj3-moon { opacity: .95; }
+
+/* 効果の幕：dim（かげる）・flash（ひらめく）・mist（霞）・rain */
+.gj3-veil { position: absolute; inset: 0; pointer-events: none; background: rgba(12,10,24,0); transition: background 1.2s; }
+.gj3-veil.gj3-dim { background: rgba(12,10,24,.46); }
+.gj3-veil.gj3-misty { background: linear-gradient(rgba(255,255,255,.34), rgba(255,255,255,.12) 45%, rgba(255,255,255,.3)); }
+.gj3-veil.gj3-rainy { background: rgba(40,50,70,.2); }
+.gj3-veil.gj3-dim.gj3-misty { background: rgba(40,40,60,.42); }
+.gj3-veil.gj3-flash { animation: gj3-flash .5s ease-out; }
+@keyframes gj3-flash { 0% { background: rgba(255,255,255,.95); } 100% { background: rgba(255,255,255,0); } }
+
+/* 敬意の矢印 */
+.gj3-arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.gj3-arrow-sonkei { --c: var(--gj3-sonkei); } .gj3-arrow-kenjo { --c: var(--gj3-kenjo); } .gj3-arrow-teinei { --c: var(--gj3-teinei); }
+.gj3-arrow-halo { fill: none; stroke: rgba(255,252,240,.9); stroke-width: 8; stroke-linecap: round; }
+.gj3-arrow-line { fill: none; stroke: var(--c); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 10 6; animation: gj3-flow 1s linear infinite; }
+.gj3-arrow-kenjo .gj3-arrow-line { stroke-dasharray: 2 7; }
+.gj3-arrow-teinei .gj3-arrow-line { stroke-dasharray: none; animation: none; }
+.gj3-arrow-head { fill: var(--c); stroke: rgba(255,252,240,.9); stroke-width: 1.5; stroke-linejoin: round; }
+.gj3-arrow-text { fill: var(--c); font-size: 14px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: rgba(255,252,240,.95); stroke-width: 4px; }
+@keyframes gj3-flow { to { stroke-dashoffset: -16; } }
+.gj3-legend { position: absolute; left: 50%; top: max(8px, env(safe-area-inset-top)); transform: translateX(-50%); display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+  max-width: 92%; padding: 5px 12px; border-radius: 999px; background: rgba(252,247,232,.9); border: 1px solid rgba(92,63,42,.35); font-size: 13px; color: #3a2c20; pointer-events: none; }
+.gj3-legend[hidden] { display: none; }
+.gj3-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.gj3-legend-item i { width: 20px; height: 4px; border-radius: 2px; background: var(--c); }
+.gj3-legend-sonkei { --c: var(--gj3-sonkei); } .gj3-legend-kenjo { --c: var(--gj3-kenjo); } .gj3-legend-teinei { --c: var(--gj3-teinei); }
+.gj3-legend-note { opacity: .75; font-size: 12px; }
+
+/* ---- 遊び（渡る・垣間見）の操作。文字の窓（下 4 割）より上に置く ---- */
+.gj3-act { position: absolute; left: 0; right: 0; top: 0; bottom: var(--gj3-panel); pointer-events: none; color: #3a2c20; }
+.gj3-act > * { pointer-events: auto; }
+.gj3-root.gj3-playing .gj3-canvas { cursor: grab; }
+.gj3-plate { background: rgba(252,247,232,.92); border: 1px solid rgba(92,63,42,.4); border-radius: 8px; box-shadow: 0 2px 8px rgba(40,24,10,.18); }
+.gj3-map { position: absolute; left: max(8px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top)); padding: 5px 6px 4px; pointer-events: none; }
+.gj3-map canvas { display: block; width: clamp(132px, 34vmin, 220px); height: auto; }
+.gj3-map-cap { font-size: 12px; line-height: 1.3; margin-top: 3px; text-align: center; }
+.gj3-map-cap b { color: #b5432e; }
+.gj3-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 4px 12px; font-size: 13px; white-space: nowrap; max-width: 94%; overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: opacity .5s; }
+.gj3-go { position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: 44px; width: clamp(72px, 20vmin, 104px); aspect-ratio: 1; border-radius: 50%;
+  border: 2px solid #7a2c1e; background: radial-gradient(circle at 40% 35%, #d86a4c, #b5432e 70%); color: #fff8ea; font: 700 clamp(15px, 4.2vmin, 20px)/1.15 inherit; font-family: inherit;
+  box-shadow: 0 4px 0 #7a2c1e, 0 6px 14px rgba(40,10,0,.35); touch-action: none; cursor: pointer; }
+.gj3-go small { display: block; font-size: .62em; font-weight: 400; opacity: .9; }
+.gj3-go.gj3-on, .gj3-go:active { transform: translateY(3px); box-shadow: 0 1px 0 #7a2c1e, 0 2px 6px rgba(40,10,0,.35); }
+.gj3-go:disabled { filter: grayscale(.7); opacity: .55; }
+.gj3-go:focus-visible { outline: 3px solid #f0c36a; outline-offset: 3px; }
+.gj3-note { position: absolute; right: max(8px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); padding: 5px 12px; font-size: 14px; pointer-events: none; }
+.gj3-note b { font-size: 1.25em; color: #7d4f9e; }
+/* 垣間見：視線の輪 */
+.gj3-reticle { position: absolute; left: 50%; top: 50%; width: clamp(84px, 24vmin, 150px); aspect-ratio: 1; transform: translate(-50%, -50%); pointer-events: none; }
+.gj3-reticle svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.gj3-reticle circle { fill: none; stroke: rgba(255,250,232,.75); stroke-width: 2; }
+.gj3-reticle .gj3-ring { stroke: #f0c36a; stroke-width: 5; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .1s linear; }
+.gj3-reticle.gj3-hit circle:first-child { stroke: #fff6d0; }
+.gj3-chev { position: absolute; top: 50%; width: 34px; height: 54px; margin-top: -27px; border: 0; background: none; font-size: 34px; line-height: 54px; color: #fff3c4; text-shadow: 0 0 8px #7a5a10, 0 0 2px #3a2c20; opacity: 0; transition: opacity .4s; pointer-events: none; animation: gj3-nudge 1s ease-in-out infinite; }
+.gj3-chev.gj3-l { left: 6px; } .gj3-chev.gj3-r { right: 6px; } .gj3-chev.gj3-show { opacity: 1; }
+@keyframes gj3-nudge { 50% { transform: translateX(4px); } }
+.gj3-vig { position: absolute; inset: 0; bottom: calc(-1 * var(--gj3-panel) / .6); pointer-events: none !important; background: radial-gradient(90% 70% at 50% 30%, rgba(0,0,0,0) 55%, rgba(30,18,8,.55) 100%); }
+.gj3-shade { position: absolute; inset: 0; bottom: -100%; pointer-events: none !important; background: rgba(8,6,14,0); transition: background .5s; }
+.gj3-shade.gj3-on { background: rgba(8,6,14,.55); }
+@media (prefers-reduced-motion: reduce) { .gj3-arrow-line, .gj3-chev { animation: none; } }

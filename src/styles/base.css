@@ -1,0 +1,106 @@
+/* 土台：色（料紙と襲の色）・文字・舞台と画面の重なり・絵巻モード（Stage2D）の見た目。 */
+:root {
+  --gj-kami: #f6efdf;        /* 料紙（鳥の子） */
+  --gj-kami2: #efe4cc;
+  --gj-usuyo: #f3e9f1;       /* 薄様（薄紫） */
+  --gj-sumi: #2a2228;        /* 墨 */
+  --gj-usuzumi: #6b5f66;
+  --gj-murasaki: #5d3a7a;    /* 紫 */
+  --gj-fuji: #a58bc0;        /* 藤 */
+  --gj-suou: #8e3548;        /* 蘇芳 */
+  --gj-moegi: #5d7a4a;       /* 萌黄 */
+  --gj-kin: #b8923a;         /* 金 */
+  --gj-kin2: #e2c98a;
+  --gj-line: rgba(93, 58, 122, .22);
+  --gj-mincho: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", "Noto Serif CJK JP", serif;
+  --gj-fs: 17px;
+  --gj-safe-b: env(safe-area-inset-bottom, 0px);
+  --gj-safe-t: env(safe-area-inset-top, 0px);
+}
+html.gj-big { --gj-fs: 22px; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2430; color: var(--gj-sumi); }
+body { font-family: var(--gj-mincho); font-size: var(--gj-fs); line-height: 1.8; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+button:disabled { cursor: default; }
+[hidden] { display: none !important; }
+ruby { ruby-align: center; }
+rt { font-size: .5em; color: var(--gj-usuzumi); letter-spacing: 0; }
+html.gj-noruby rt { display: none; }
+.gj-mark { font-style: normal; color: var(--gj-suou); font-weight: 700; background: linear-gradient(transparent 62%, rgba(226, 201, 138, .7) 62%); }
+:focus-visible { outline: 3px solid var(--gj-kin); outline-offset: 2px; }
+
+#gj-stage { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #d9cfb8; }
+#gj-ui { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+#gj-ui > * { pointer-events: auto; }
+
+/* 料紙の地（金砂子を散らす） */
+.gj-paper, .gj-screen, .gj-modal-box, .gj-panel {
+  background-color: var(--gj-kami);
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(184, 146, 58, .28) 0 1.2px, transparent 1.6px),
+    radial-gradient(circle at 72% 9%, rgba(184, 146, 58, .22) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 44% 62%, rgba(184, 146, 58, .2) 0 1.3px, transparent 1.7px),
+    radial-gradient(circle at 88% 78%, rgba(184, 146, 58, .26) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 26% 88%, rgba(184, 146, 58, .18) 0 .9px, transparent 1.3px),
+    linear-gradient(135deg, rgba(165, 139, 192, .16), transparent 42%, rgba(142, 53, 72, .07));
+  background-size: 180px 160px, 230px 190px, 150px 210px, 260px 170px, 200px 240px, 100% 100%;
+}
+
+/* ---------- 絵巻モード ---------- */
+.gj-s2 { position: absolute; inset: 0; overflow: hidden; }
+.gj-s2-sky { position: absolute; inset: 0; transition: background .6s; }
+.gj-s2-sky::after { content: ""; position: absolute; inset: 0; opacity: .5;
+  background: radial-gradient(ellipse 60% 9% at 18% 12%, rgba(226, 201, 138, .8), transparent 70%), radial-gradient(ellipse 50% 8% at 82% 30%, rgba(226, 201, 138, .6), transparent 70%), radial-gradient(ellipse 70% 10% at 40% 92%, rgba(226, 201, 138, .5), transparent 70%); }
+.gj-s2-wrap { position: absolute; left: 50%; top: max(calc(var(--gj-safe-t) + 58px), 8%); width: min(96%, calc(50vh * 1.6)); transform: translateX(-50%); }
+.gj-s2-box { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 3px; background: #c9c79a;
+  box-shadow: 0 0 0 1px rgba(60, 40, 20, .5), 0 0 0 5px var(--gj-kami), 0 0 0 6px var(--gj-kin), 0 10px 28px rgba(30, 20, 30, .35); }
+.gj-s2-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; font-family: var(--gj-mincho); }
+.gj-s2-cam { transition: transform .7s ease; transform-origin: 0 0; }
+.gj-s2-doll { transition: transform .6s ease, opacity .4s, filter .4s; }
+.gj-s2-doll.gj-off { opacity: .72; filter: saturate(.7); }
+.gj-s2-doll.gj-on { filter: drop-shadow(0 0 1.2px #fff6c8) drop-shadow(0 0 2.2px rgba(255, 240, 170, .9)); }
+.gj-s2-doll.gj-veil { opacity: .12; }
+.gj-s2-run { animation: gj-run .5s ease-in-out infinite alternate; }
+@keyframes gj-run { to { transform: translateY(-1.2px) rotate(11deg); } }
+.gj-s2-arrow { stroke-dasharray: 3 1.6; animation: gj-dash 1.4s linear infinite; }
+@keyframes gj-dash { to { stroke-dashoffset: -9.2; } }
+.gj-s2-label { position: absolute; left: 8px; top: 6px; padding: 0 8px; font-size: 12px; line-height: 1.9; color: #3a2a22; background: rgba(246, 239, 223, .85); border-left: 3px solid var(--gj-suou); }
+.gj-s2-label:empty { display: none; }
+.gj-s2-fx, .gj-s2-over { position: absolute; inset: 0; pointer-events: none; }
+.gj-s2-over > * { pointer-events: auto; }
+.gj-s2-fx i { position: absolute; width: 7px; height: 5px; border-radius: 60% 40%; background: #f6cfd9; animation: gj-fall 3s linear infinite; }
+.gj-fx-leaves i { background: #c9582e; }
+.gj-fx-rain i { width: 1px; height: 16px; border-radius: 0; background: rgba(220, 230, 240, .8); animation-duration: .7s; }
+.gj-fx-mist i { width: 46%; height: 16%; border-radius: 50%; background: rgba(255, 255, 255, .34); animation: gj-drift 6s ease-in-out infinite alternate; }
+.gj-fx-wind i { width: 40px; height: 1px; background: rgba(255, 255, 255, .7); animation: gj-wind 1.1s linear infinite; }
+@keyframes gj-fall { from { transform: translate(0, -30px) rotate(0); } to { transform: translate(-40px, 260px) rotate(300deg); } }
+@keyframes gj-drift { to { transform: translateX(30%); } }
+@keyframes gj-wind { from { transform: translateX(-80px); opacity: 0; } 50% { opacity: 1; } to { transform: translateX(240px); opacity: 0; } }
+.gj-fx-shake { animation: gj-shake .5s; }
+@keyframes gj-shake { 20% { transform: translate(-5px, 2px); } 40% { transform: translate(5px, -2px); } 60% { transform: translate(-3px, 1px); } 80% { transform: translate(3px, 0); } }
+.gj-fx-flash::after, .gj-fx-dim::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.gj-fx-flash::after { background: #fff; animation: gj-flash .7s forwards; }
+.gj-fx-dim::after { background: rgba(20, 14, 30, .5); animation: gj-dim 4s forwards; }
+@keyframes gj-flash { from { opacity: .9; } to { opacity: 0; } }
+@keyframes gj-dim { 0% { opacity: 0; } 20%, 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* 絵巻の遊び（コマの下に操作を出す。文字の窓とは重ならない） */
+.gj-s2-ctl { margin-top: 14px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.gj-s2-btn { min-height: 48px; min-width: 160px; padding: 6px 26px; border: 1px solid var(--gj-kin); border-radius: 26px; background: linear-gradient(180deg, #7a4f9a, var(--gj-murasaki)); color: #fff8e6; font-size: 18px; letter-spacing: .2em; box-shadow: 0 3px 10px rgba(40, 20, 50, .35); }
+.gj-s2-way { width: 100%; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--gj-sumi); }
+.gj-s2-way span { background: rgba(246, 239, 223, .9); padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+.gj-s2-way b { flex: 1; height: 6px; border-radius: 3px; background: rgba(60, 40, 60, .25); overflow: hidden; }
+.gj-s2-way i { display: block; height: 100%; width: 0; background: var(--gj-suou); transition: width .6s; }
+.gj-s2-note { margin: 0; padding: 2px 12px; font-size: 13px; background: rgba(246, 239, 223, .92); border-radius: 12px; }
+.gj-s2-kaki { position: absolute; top: 0; bottom: 0; pointer-events: none;
+  background: repeating-linear-gradient(86deg, rgba(74, 56, 30, .93) 0 5px, rgba(108, 86, 50, .9) 5px 9px, rgba(60, 44, 22, .93) 9px 12px); }
+.gj-s2-gap { position: absolute; top: 50%; width: 56px; height: 72%; min-height: 48px; transform: translate(-50%, -50%); border: 2px dashed var(--gj-kin2); border-radius: 28px; background: rgba(20, 14, 10, .55); color: #fff3cf; font-size: 12px; writing-mode: vertical-rl; letter-spacing: .3em; animation: gj-glow 1.8s ease-in-out infinite alternate; }
+@keyframes gj-glow { to { box-shadow: 0 0 14px 3px rgba(255, 236, 170, .75); } }
+.gj-s2-seen { position: absolute; bottom: 4px; transform: translateX(-50%); padding: 0 8px; font-size: 12px; background: rgba(246, 239, 223, .92); border-bottom: 2px solid var(--gj-suou); white-space: nowrap; }
+
+.gj-doll { width: 56px; height: 47px; flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

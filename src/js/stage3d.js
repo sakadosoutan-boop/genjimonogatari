@@ -1,0 +1,427 @@
+/* 3D 舞台の本体 —— window.GENJI.Stage3D（API は docs/CONTRACT.md「舞台 API」）。
+ * 吹抜屋台の俯瞰を基本に、focus(人物) で低い視点へなめらかに寄る。
+ * 文字の窓（画面の下 4 割）に隠れないよう、絵の中心を上 6 割の真ん中へずらして描く。
+ * 依存: THREE r128, stage3d-kit.js, stage3d-figures.js, stage3d-sets.js, stage3d-activities.js */
+(function (root) {
+  'use strict';
+  var G = root.GENJI = root.GENJI || {}, T = root.THREE, K = G.S3K, F = G.S3F, SETS = G.S3S;
+  var PI = Math.PI, doc = root.document;
+  var S = { q: 'high', panel: 0.4, figs: {}, order: [], wind: 0, t: 0 };
+
+  /* 光：空（上・下）の色、日／月の色と向き、地の色（絵巻の紙色）、灯 */
+  var LIGHTS = {
+    dawn:  { bg: '#ead9cf', hemi: ['#ffeee6', '#9a8a8e', 0.7], sun: ['#ffd6c0', 0.42, [-6, 7, 6]], amb: 0.1 },
+    day:   { bg: '#eadfc2', hemi: ['#fffaf0', '#b3a586', 0.74], sun: ['#fff3dc', 0.42, [5, 10, 6]], amb: 0.1 },
+    dusk:  { bg: '#e2b98e', hemi: ['#ffdcb8', '#86697a', 0.68], sun: ['#ffae6c', 0.5, [-8, 4.5, 4]], amb: 0.08, dark: 1 },
+    night: { bg: '#20263c', hemi: ['#6f7ba6', '#262637', 0.62], sun: ['#93a4d6', 0.22, [3, 9, 5]], amb: 0.06, dark: 1, lamp: 1.1 },
+    moon:  { bg: '#313c5c', hemi: ['#97a8d0', '#2e3046', 0.72], sun: ['#d3deff', 0.5, [-6, 9, 3]], amb: 0.06, dark: 1, lamp: 0.7, moon: 1 }
+  };
+  var KEIGO = { sonkei: '尊敬', kenjo: '謙譲', teinei: '丁寧' };
+
+  function supported() {
+    if (!T || !K || !K.ok || !F || !SETS || !doc) return false;
+    if (S.sup != null) return S.sup;
+    try { var c = doc.createElement('canvas'); S.sup = !!(root.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl'))); }
+    catch (e) { S.sup = false; }
+    return S.sup;
+  }
+  function div(cls, parent, tag) { var e = doc.createElement(tag || 'div'); e.className = cls; if (parent) parent.appendChild(e); return e; }
+
+  /* ---------- 取り付け ---------- */
+  function mount(el, opts) {
+    if (S.el) unmount();
+    if (!supported()) return false;
+    opts = opts || {};
+    S.q = opts.quality === 'low' ? 'low' : 'high';
+    if (opts.panel != null) S.panel = opts.panel;
+    S.el = el;
+    S.wrap = div('gj3-root', el);
+    S.cv = div('gj3-canvas', S.wrap, 'canvas');
+    try {
+      S.renderer = new T.WebGLRenderer({ canvas: S.cv, antialias: S.q === 'high', alpha: false, powerPreference: 'high-performance' });
+    } catch (e) { S.sup = false; el.removeChild(S.wrap); S.el = null; return false; }
+    S.renderer.outputEncoding = T.sRGBEncoding;
+    S.renderer.shadowMap.enabled = S.q === 'high'; S.renderer.shadowMap.type = T.PCFSoftShadowMap;
+    S.camera = new T.PerspectiveCamera(30, 1, 0.3, 400);
+    S.cam = { t: new T.Vector3(), az: 0.4, el: 0.85, dist: 20 }; S.goal = { t: new T.Vector3(), az: 0.4, el: 0.85, dist: 20 };
+    S.kumo = div('gj3-kumo', S.wrap); S.moon = div('gj3-moon', S.wrap); S.veil = div('gj3-veil', S.wrap);
+    S.svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg'); S.svg.setAttribute('class', 'gj3-arrows'); S.wrap.appendChild(S.svg);
+    S.legend = div('gj3-legend', S.wrap); S.legend.hidden = true;
+    S.ui = div('gj3-act', S.wrap);
+    S.onRes = function () { resize(); };
+    root.addEventListener('resize', S.onRes);
+    if (root.ResizeObserver) { S.ro = new root.ResizeObserver(S.onRes); S.ro.observe(el); }
+    S.onVis = function () { S.hidden = doc.hidden; };
+    doc.addEventListener('visibilitychange', S.onVis);
+    if (root.IntersectionObserver) { S.io = new root.IntersectionObserver(function (es) { S.off = !es[0].isIntersecting; }); S.io.observe(S.wrap); }
+    S.cv.addEventListener('webglcontextlost', function (e) { e.preventDefault(); S.lost = true; });
+    S.cv.addEventListener('webglcontextrestored', function () { S.lost = false; });
+    resize();
+    S.running = true; S.last = 0; S.raf = root.requestAnimationFrame(frame);
+    return true;
+  }
+  function unmount() {
+    if (!S.el) return;
+    stopActivity();
+    root.cancelAnimationFrame(S.raf); S.running = false;
+    clearScene();
+    root.removeEventListener('resize', S.onRes); doc.removeEventListener('visibilitychange', S.onVis);
+    if (S.ro) S.ro.disconnect(); if (S.io) S.io.disconnect();
+    K.disposeAll(); SETS._reset();
+    S.renderer.dispose();
+    if (S.wrap.parentNode) S.wrap.parentNode.removeChild(S.wrap);
+    S.el = S.wrap = S.cv = S.renderer = S.scene = S.set = S.node = null; S.figs = {}; S.order = [];
+  }
+  function resize() {
+    if (!S.renderer) return;
+    var r = S.wrap.getBoundingClientRect();
+    S.w = Math.max(1, Math.round(r.width)); S.h = Math.max(1, Math.round(r.height));
+    var dpr = root.devicePixelRatio || 1;
+    S.renderer.setPixelRatio(S.q === 'high' ? Math.min(2, dpr) : Math.min(1.25, Math.max(1, dpr)));
+    S.renderer.setSize(S.w, S.h, false);
+    S.camera.aspect = S.w / S.h;
+    S.camera.fov = S.fovOver || (S.w / S.h < 0.8 ? 38 : 30);
+    /* 絵の中心を、文字の窓より上に残る領域の真ん中へ */
+    S.camera.setViewOffset(S.w, S.h, 0, S.h * S.panel / 2, S.w, S.h);
+    S.camera.updateProjectionMatrix();
+    S.svg.setAttribute('viewBox', '0 0 ' + S.w + ' ' + S.h);
+    if (S.set) { fitWide(); K.fitLabels(S.set.g, S.camera, S.h); labelDensity(); }
+    if (S.act && S.act.resize) S.act.resize();
+  }
+  function setQuality(q) {
+    q = q === 'low' ? 'low' : 'high'; if (q === S.q) return; S.q = q;
+    if (!S.el) return;
+    var el = S.el, node = S.node, panel = S.panel;
+    unmount(); mount(el, { quality: q, panel: panel }); if (node) setScene(node);
+  }
+  function setPanel(f) { S.panel = K.clamp(+f || 0, 0, 0.6); resize(); }
+
+  /* ---------- 舞台の組み替え ---------- */
+  function clearScene() {
+    var k;
+    for (k in S.figs) S.figs[k].forEach(function (f) { f.dispose(); });
+    S.figs = {}; S.order = []; S.speaker = null;
+    if (S.set) K.dispose(S.set.g);
+    if (S.scene) { S.scene.traverse(function (o) { if (o.geometry && !o.geometry._gjShared) o.geometry.dispose(); if (o.material && !o.material._gjShared && o.material.dispose) o.material.dispose(); if (o.shadow && o.shadow.map) o.shadow.map.dispose(); }); }
+    S.set = null; S.scene = null; S.parts = null; S.rain = null; S.mistOn = 0; S.dimOn = 0;
+    if (S.veil) S.veil.className = 'gj3-veil';
+    arrows(null);
+  }
+  function load(node, opt) {
+    opt = opt || {};
+    clearScene();
+    var spec = G.stageSpec || {}, lt = LIGHTS[node.light] ? node.light : 'day', L = LIGHTS[lt];
+    var season = (spec.seasons || ['spring', 'summer', 'autumn', 'winter']).indexOf(node.season) >= 0 ? node.season : 'spring';
+    S.light = lt; S.season = season; S.L = L;
+    var env = { light: lt, season: season, low: S.q === 'low', dark: !!L.dark, noKumo: false };
+    if (node.stage && SETS.STAGES.indexOf(node.stage) < 0 && !opt.custom) root.console && console.warn('[Stage3D] 知らない舞台: ' + node.stage);
+    var set = S.set = opt.custom ? opt.custom(env) : SETS.build(node.stage, env, opt);
+    var sc = S.scene = new T.Scene();
+    sc.background = K.col(L.bg);
+    sc.fog = new T.Fog(K.col(L.bg), 60, 240);
+    sc.add(set.g);
+    var hemi = new T.HemisphereLight(K.col(L.hemi[0]), K.col(L.hemi[1]), L.hemi[2]); sc.add(hemi);
+    sc.add(new T.AmbientLight(0xffffff, L.amb));
+    var sun = S.sun = new T.DirectionalLight(K.col(L.sun[0]), L.sun[1]);
+    sun.position.set(L.sun[2][0], L.sun[2][1], L.sun[2][2]).multiplyScalar(4);
+    if (S.q === 'high' && !opt.noShadow) {
+      var R = set.shadowR || 12, c = sun.shadow.camera;
+      sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+      c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 1; c.far = 160; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+    }
+    sc.add(sun); sc.add(sun.target);
+    (set.lamps || []).slice(0, 2).forEach(function (l) { if (!L.lamp) return; var p = new T.PointLight(0xffb060, L.lamp, 9, 1.6); p.position.set(l.x, l.y, l.z); sc.add(p); l.light = p; });
+    /* 話し手の足もとの光の輪 */
+    S.ring = new T.Mesh(K.G.plane(), K.mat('#ffe9b0', { basic: true, map: K.tex.glow(), transparent: true, depthWrite: false, add: true, fog: false, opacity: 0.999 }));
+    S.ring.material = S.ring.material.clone(); S.ring.material.opacity = 0; S.ring.renderOrder = 4; S.ring.visible = false; sc.add(S.ring);
+    S.wrap.setAttribute('data-light', lt); S.wrap.setAttribute('data-season', season); S.wrap.setAttribute('data-stage', set.stage || 'act');
+    makeParticles();
+    (node.cast || []).forEach(function (c) { addFig(typeof c === 'string' ? { id: c } : c); });
+    fitWide(true);
+    K.fitLabels(set.g, S.camera, S.h); labelDensity();
+    return set;
+  }
+  function labelDensity() {   // 幅の狭い画面では、主でない殿舎の札を小さく
+    if (!S.set) return; var narrow = S.w < 560;
+    S.set.g.traverse(function (o) { if (o.userData.minor && narrow) { o.scale.multiplyScalar(0.72); } });
+  }
+  function setScene(node) {
+    if (!S.el) return Promise.resolve();
+    stopActivity();
+    node = node || {};
+    S.node = { stage: node.stage, light: node.light, season: node.season, cast: (node.cast || []).slice() };
+    load(S.node);
+    return Promise.resolve();
+  }
+
+  /* ---------- 人物 ---------- */
+  var AUTO = ['naka', 'nakaL', 'nakaR', 'shimo', 'shimoL', 'shimoR', 'kamiL', 'kamiR', 'kami', 'sunoko', 'to', 'niwa', 'misu'];
+  var STANDS = { sunoko: 1, niwa: 1, to: 1, kaki: 1, kakiL: 1, kakiR: 1 };
+  function addFig(c) {
+    var set = S.set, id = c.id; if (!id || !set || S.figs[id]) return null;
+    var used = {}; S.order.forEach(function (k) { used[S.figs[k][0].at] = 1; });
+    var at = c.at && set.slots[c.at] ? c.at : null, i;
+    if (!at) { if (id === 'mikado' && !used.kami) at = 'kami'; else for (i = 0; i < AUTO.length; i++) if (set.slots[AUTO[i]] && !used[AUTO[i]]) { at = AUTO[i]; break; } }
+    at = at || 'naka';
+    var sl = c.pos || set.slots[at] || [0, 0, 0, 0], same = 0;
+    S.order.forEach(function (k) { if (S.figs[k][0].at === at) same++; });
+    var kind = F.kindOf(id), pose = c.pose || ((set.standing || STANDS[at]) ? 'stand' : 'sit');
+    var n = F.GROUPS[id] || 1, list = [], fs = set.figScale || 1;
+    for (i = 0; i < n; i++) {
+      var f = F.make(id, { variant: i, seed: i * 3.1 + S.order.length, pose: pose });
+      f.root.scale.multiplyScalar(fs);
+      var off = (i ? (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 0.95 : 0) + same * 1.15, ry = sl[2] || 0, back = i ? 0.45 : 0;
+      f.root.position.set(sl[0] + (Math.cos(ry) * off - Math.sin(ry) * back) * fs, sl[3] || 0, sl[1] + (-Math.sin(ry) * off - Math.cos(ry) * back) * fs);
+      f.root.rotation.y = ry + (i ? (i % 2 ? -0.25 : 0.25) : 0);
+      f.at = at; S.scene.add(f.root); list.push(f);
+    }
+    S.figs[id] = list; S.order.push(id);
+    return list[0];
+  }
+  function pose(id, p) { var l = S.figs[id]; if (l) l.forEach(function (f) { f.setPose(p); }); }
+  function speak(id) {
+    S.speaker = id && S.figs[id] ? id : null;
+    for (var k in S.figs) S.figs[k].forEach(function (f, i) { f.speak(k === S.speaker && i === 0); });
+  }
+  var _v = T ? new T.Vector3() : null, _v2 = T ? new T.Vector3() : null;
+  function headOf(id, v) { var l = S.figs[id]; if (!l) return null; l[0].root.updateMatrixWorld(true); return l[0].headWorld(v || new T.Vector3()); }
+
+  /* ---------- カメラ ---------- */
+  function tanF() { return Math.tan(S.camera.fov * PI / 360); }
+  function fitDist(rh, rv) { var t = tanF(); return Math.max(rv / (t * (1 - S.panel)), rh / (t * S.camera.aspect)) * 1.04; }
+  function fitWide(instant) {
+    if (!S.set || (S.focusAt && !instant)) return;
+    var c = S.set.cam; S.focusAt = null;
+    S.goal.t.set(c.t[0], c.t[1], c.t[2]); S.goal.az = c.az; S.goal.el = c.el; S.goal.dist = fitDist(c.rh, c.rv);
+    if (instant) snapCam();
+  }
+  function snapCam() { S.cam.t.copy(S.goal.t); S.cam.az = S.goal.az; S.cam.el = S.goal.el; S.cam.dist = S.goal.dist; }
+  function focus(at) {
+    if (!S.set || S.act) return;
+    var c = S.set.cam, fs = S.set.figScale || 1, fd = S.set.focusDist || 5.2;
+    if (!at || at === 'wide') { S.focusAt = null; S.goal.t.set(c.t[0], c.t[1], c.t[2]); S.goal.az = c.az; S.goal.el = c.el; S.goal.dist = fitDist(c.rh, c.rv); return; }
+    var narrow = S.camera.aspect < 0.8 ? 1.25 : 1;
+    if (S.figs[at]) {
+      var f = S.figs[at][0], h = headOf(at, _v), ry = f.root.rotation.y, d = ry - c.az;
+      while (d > PI) d -= PI * 2; while (d < -PI) d += PI * 2;
+      S.focusAt = at;
+      S.goal.t.set(h.x, h.y - 0.22 * fs, h.z);
+      /* 顔が見える側へ少し回り込む。後ろ向きの人は斜め後ろ姿のまま（絵巻の後ろ姿） */
+      S.goal.az = c.az + K.clamp(Math.abs(d) < 1.9 ? d * 0.55 : -Math.sign(d) * (PI - Math.abs(d)) * 0.4, -0.75, 0.75);
+      S.goal.el = 0.36; S.goal.dist = fd * narrow;
+    } else if (S.set.slots[at]) {
+      var s = S.set.slots[at]; S.focusAt = at;
+      S.goal.t.set(s[0], (s[3] || 0) + 0.6 * fs, s[1]); S.goal.az = c.az; S.goal.el = 0.5; S.goal.dist = fd * 1.5 * narrow;
+    }
+  }
+  function applyCam(dt) {
+    var c = S.cam, g = S.goal, k = 1 - Math.exp(-dt * 3.2);
+    c.t.lerp(g.t, k); c.az += (g.az - c.az) * k; c.el += (g.el - c.el) * k; c.dist += (g.dist - c.dist) * k;
+    var ce = Math.cos(c.el), cam = S.camera;
+    cam.position.set(c.t.x + c.dist * Math.sin(c.az) * ce, c.t.y + c.dist * Math.sin(c.el), c.t.z + c.dist * Math.cos(c.az) * ce);
+    cam.lookAt(c.t);
+  }
+
+  /* ---------- 粒（花びら・紅葉・雪・雨） ---------- */
+  var PCOL = { petals: ['#f6cdd6', '#fbe6ea', '#f0b9c6'], leaves: ['#c2452d', '#d98a3a', '#d9ae45'], snow: ['#ffffff', '#eef2f6'] };
+  function makeParticles() {
+    var n = S.q === 'low' ? 70 : 220, g = new T.BufferGeometry();
+    var P = S.parts = { n: n, pos: new Float32Array(n * 3), col: new Float32Array(n * 3), vel: new Float32Array(n * 3), life: new Float32Array(n), ph: new Float32Array(n), live: 0, rate: 0, kind: 'petals', until: 0 };
+    for (var i = 0; i < n; i++) { P.pos[i * 3 + 1] = -999; P.ph[i] = Math.random() * 6.28; }
+    g.setAttribute('position', new T.BufferAttribute(P.pos, 3)); g.setAttribute('color', new T.BufferAttribute(P.col, 3));
+    var fs = S.set.figScale || 1;
+    P.mat = new T.PointsMaterial({ size: 0.13 * (fs > 1.5 ? 3 : 1), map: K.tex.hira(), vertexColors: true, transparent: true, depthWrite: false, alphaTest: 0.2, fog: false });
+    P.obj = new T.Points(g, P.mat); P.obj.frustumCulled = false; P.obj.renderOrder = 8; S.scene.add(P.obj);
+    /* 季節のあしらい（庭の見える舞台でひかえめに） */
+    var a = { spring: ['petals', 0.5], autumn: ['leaves', 0.35], winter: ['snow', 1.6] }[S.season];
+    P.base = a && S.set.amb && !S.set.follow ? a : null;
+    if (S.set.stage === 'kokyu' && P.base) P.base = [P.base[0], P.base[1] * 0.6];
+  }
+  function spawn(P, i, kind, wide) {
+    var a = wide || S.set.amb || { x: 0, z: 0, r: 8, y: 6 }, c = PCOL[kind] || PCOL.petals, col = K.col(c[(Math.random() * c.length) | 0]);
+    P.pos[i * 3] = a.x + (Math.random() - 0.5) * 2 * a.r; P.pos[i * 3 + 1] = a.y * (0.6 + Math.random() * 0.5); P.pos[i * 3 + 2] = a.z + (Math.random() - 0.5) * 2 * a.r;
+    P.vel[i * 3] = (Math.random() - 0.3) * 0.5; P.vel[i * 3 + 1] = -(kind === 'snow' ? 0.7 : 0.9) - Math.random() * 0.5; P.vel[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+    P.col[i * 3] = col.r; P.col[i * 3 + 1] = col.g; P.col[i * 3 + 2] = col.b; P.life[i] = 12;
+  }
+  function updateParticles(dt) {
+    var P = S.parts; if (!P) return;
+    var burst = S.t < P.until, kind = burst ? P.kind : (P.base ? P.base[0] : null), rate = burst ? P.rate : (P.base ? P.base[1] * (S.q === 'low' ? 3 : 8) : 0), i, floor = (S.set.amb && S.set.amb.floor != null) ? S.set.amb.floor : -0.8;
+    var area = burst && S.focusAt ? null : null, sc = (S.set.figScale || 1) > 1.5 ? 2.4 : 1;
+    P.acc = (P.acc || 0) + rate * dt;
+    for (i = 0; i < P.n; i++) {
+      if (P.life[i] <= 0) { if (P.acc >= 1 && kind) { P.acc -= 1; spawn(P, i, kind, burst ? { x: S.cam.t.x, z: S.cam.t.z, r: (S.set.amb ? S.set.amb.r : 8), y: (S.set.amb ? S.set.amb.y : 6) } : null); } continue; }
+      P.life[i] -= dt;
+      var w = S.wind * 5 * sc;
+      P.pos[i * 3] += (P.vel[i * 3] + Math.sin(S.t * 1.7 + P.ph[i]) * 0.5 + w) * dt * sc;
+      P.pos[i * 3 + 1] += P.vel[i * 3 + 1] * dt * sc;
+      P.pos[i * 3 + 2] += (P.vel[i * 3 + 2] + Math.cos(S.t * 1.3 + P.ph[i]) * 0.4) * dt * sc;
+      if (P.pos[i * 3 + 1] < floor || P.life[i] <= 0) { P.life[i] = 0; P.pos[i * 3 + 1] = -999; }
+    }
+    if (P.acc > 3) P.acc = 3;
+    P.obj.geometry.attributes.position.needsUpdate = true; P.obj.geometry.attributes.color.needsUpdate = true;
+    /* 雨 */
+    if (S.rain) {
+      var R = S.rain, p = R.pos, a = S.set.amb || { x: 0, z: 0, r: 8, y: 6 }, top = a.y * 1.2;
+      for (i = 0; i < R.n; i++) {
+        p[i * 6 + 1] -= R.sp * dt; p[i * 6 + 4] -= R.sp * dt; p[i * 6] += S.wind * 6 * dt; p[i * 6 + 3] += S.wind * 6 * dt;
+        if (p[i * 6 + 4] < -0.7) { var x = S.cam.t.x + (Math.random() - 0.5) * 2.4 * a.r, z = S.cam.t.z + (Math.random() - 0.5) * 2.4 * a.r, y = top * (0.5 + Math.random()); p[i * 6] = x; p[i * 6 + 1] = y; p[i * 6 + 2] = z; p[i * 6 + 3] = x + 0.05; p[i * 6 + 4] = y - R.len; p[i * 6 + 5] = z; }
+      }
+      R.obj.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+  function startRain() {
+    if (S.rain || !S.scene) return;
+    var n = S.q === 'low' ? 90 : 260, fs = (S.set.figScale || 1) > 1.5 ? 3 : 1, R = S.rain = { n: n, pos: new Float32Array(n * 6), sp: 15 * fs, len: 0.7 * fs }, g = new T.BufferGeometry();
+    for (var i = 0; i < n; i++) R.pos[i * 6 + 4] = -5 - Math.random() * 3;
+    g.setAttribute('position', new T.BufferAttribute(R.pos, 3));
+    R.obj = new T.LineSegments(g, new T.LineBasicMaterial({ color: S.L.dark ? 0xb8c4dc : 0x8f9aa6, transparent: true, opacity: 0.55, fog: false }));
+    R.obj.frustumCulled = false; R.obj.renderOrder = 9; S.scene.add(R.obj);
+  }
+
+  /* ---------- 効果 ---------- */
+  function fx(name) {
+    if (!S.scene) return;
+    var P = S.parts;
+    if (name === 'shake') S.shake = 0.55;
+    else if (name === 'petals' || name === 'leaves') { P.kind = name; P.rate = S.q === 'low' ? 14 : 40; P.until = S.t + 7; }
+    else if (name === 'rain') { startRain(); S.veil.classList.add('gj3-rainy'); }
+    else if (name === 'mist') { S.mistOn = 1; S.veil.classList.add('gj3-misty'); }
+    else if (name === 'dim') { S.dimOn = 1; S.veil.classList.add('gj3-dim'); }
+    else if (name === 'flash') { S.veil.classList.remove('gj3-flash'); void S.veil.offsetWidth; S.veil.classList.add('gj3-flash'); }
+    else if (name === 'wind') { S.windT = 5; if (P && S.season !== 'summer') { P.kind = S.season === 'spring' ? 'petals' : S.season === 'winter' ? 'snow' : 'leaves'; P.rate = S.q === 'low' ? 10 : 26; P.until = S.t + 5; } }
+    else if (name === 'clear' || name == null) {
+      S.mistOn = 0; S.dimOn = 0; S.windT = 0; S.veil.className = 'gj3-veil'; if (P) P.until = 0;
+      if (S.rain) { S.scene.remove(S.rain.obj); S.rain.obj.geometry.dispose(); S.rain.obj.material.dispose(); S.rain = null; }
+    }
+  }
+
+  /* ---------- 敬意の矢印（SVG。色と凡例は stage3d.css） ---------- */
+  function arrows(list) {
+    S.arrowList = list && list.length ? list.slice() : null;
+    if (!S.svg) return;
+    while (S.svg.firstChild) S.svg.removeChild(S.svg.firstChild);
+    S.arrowEls = [];
+    S.legend.hidden = !S.arrowList; S.legend.innerHTML = '';
+    if (!S.arrowList) return;
+    var seen = {}, NS = 'http://www.w3.org/2000/svg';
+    S.arrowList.forEach(function (a, i) {
+      var kind = KEIGO[a.kind] ? a.kind : 'sonkei', g = doc.createElementNS(NS, 'g'); g.setAttribute('class', 'gj3-arrow gj3-arrow-' + kind);
+      var halo = doc.createElementNS(NS, 'path'); halo.setAttribute('class', 'gj3-arrow-halo');
+      var p = doc.createElementNS(NS, 'path'); p.setAttribute('class', 'gj3-arrow-line');
+      var hd = doc.createElementNS(NS, 'path'); hd.setAttribute('class', 'gj3-arrow-head');
+      var tx = doc.createElementNS(NS, 'text'); tx.setAttribute('class', 'gj3-arrow-text'); tx.textContent = KEIGO[kind];
+      g.appendChild(halo); g.appendChild(p); g.appendChild(hd); g.appendChild(tx); S.svg.appendChild(g);
+      S.arrowEls.push({ a: a, g: g, halo: halo, p: p, hd: hd, tx: tx, i: i });
+      if (!seen[kind]) { seen[kind] = 1; var li = div('gj3-legend-item gj3-legend-' + kind, S.legend, 'span'); li.innerHTML = '<i></i>' + KEIGO[kind] + '語'; }
+    });
+    if (S.arrowList.some(function (a) { return a.from === 'kataribe'; })) { var n = div('gj3-legend-item gj3-legend-note', S.legend, 'span'); n.textContent = '手前から＝語り手（作者）'; }
+  }
+  function scr(v) { v.project(S.camera); return [(v.x + 1) / 2 * S.w, (1 - v.y) / 2 * S.h, v.z]; }
+  function updateArrows() {
+    if (!S.arrowEls || !S.arrowEls.length) return;
+    var bottom = S.h * (1 - S.panel) - 6, nOut = 0;
+    S.arrowEls.forEach(function (e) {
+      var b = headOf(e.a.to, _v), a, A, B;
+      if (!b) { e.g.style.display = 'none'; return; }
+      B = scr(_v); B[1] -= 4;
+      a = e.a.from !== 'kataribe' && headOf(e.a.from, _v2);
+      if (a) A = scr(_v2);
+      else { A = [K.clamp(B[0] + (nOut % 2 ? 90 : -70) - nOut * 14, 24, S.w - 24), bottom]; nOut++; }
+      var dx = B[0] - A[0], dy = B[1] - A[1], L = Math.sqrt(dx * dx + dy * dy);
+      if (L < 12 || B[2] > 1) { e.g.style.display = 'none'; return; }
+      e.g.style.display = '';
+      var ux = dx / L, uy = dy / L, t0 = a ? 16 : 0, t1 = 18, bend = Math.min(70, L * 0.22) * (e.i % 2 ? -1 : 1);
+      var x0 = A[0] + ux * t0, y0 = A[1] + uy * t0, x1 = B[0] - ux * t1, y1 = B[1] - uy * t1, mx = (x0 + x1) / 2 - uy * bend, my = (y0 + y1) / 2 + ux * bend - (a ? Math.min(40, L * 0.15) : 0);
+      var d = 'M' + x0.toFixed(1) + ' ' + y0.toFixed(1) + ' Q' + mx.toFixed(1) + ' ' + my.toFixed(1) + ' ' + x1.toFixed(1) + ' ' + y1.toFixed(1);
+      e.p.setAttribute('d', d); e.halo.setAttribute('d', d);
+      var hx = x1 - mx, hy = y1 - my, hl = Math.sqrt(hx * hx + hy * hy) || 1; hx /= hl; hy /= hl;
+      var s = 11, px = -hy, py = hx, tx = x1 + hx * s, ty = y1 + hy * s;
+      e.hd.setAttribute('d', 'M' + tx.toFixed(1) + ' ' + ty.toFixed(1) + ' L' + (x1 + px * s * 0.62).toFixed(1) + ' ' + (y1 + py * s * 0.62).toFixed(1) + ' L' + (x1 - px * s * 0.62).toFixed(1) + ' ' + (y1 - py * s * 0.62).toFixed(1) + 'Z');
+      e.tx.setAttribute('x', ((x0 + 2 * mx + x1) / 4).toFixed(1)); e.tx.setAttribute('y', ((y0 + 2 * my + y1) / 4 - 7).toFixed(1));
+    });
+  }
+
+  /* ---------- 毎フレーム ---------- */
+  function frame(now) {
+    if (!S.running) return;
+    S.raf = root.requestAnimationFrame(frame);
+    if (S.hidden || S.off || S.lost || !S.scene || !S.wrap.offsetParent && root.getComputedStyle(S.wrap).position !== 'fixed' && !S.wrap.offsetWidth) { S.last = 0; return; }
+    var dt = S.last ? Math.min(0.05, (now - S.last) / 1000) : 0.016; S.last = now;
+    draw(dt);
+  }
+  function draw(dt) {
+    var t0 = root.performance ? performance.now() : 0, k, set = S.set;
+    S.t += dt; var t = S.t;
+    if (S.windT > 0) S.windT -= dt;
+    S.wind += ((S.windT > 0 ? 1 : 0) - S.wind) * (1 - Math.exp(-dt * 2));
+    for (k in S.figs) S.figs[k].forEach(function (f) { f.update(dt, t); });
+    var wa = 1 + S.wind * 9;
+    (set.sway || []).forEach(function (s) { s.o.rotation[s.ax] = Math.sin(t * (0.8 + S.wind * 2.2) + s.ph) * s.amp * wa + (s.ax === 'x' ? S.wind * s.amp * 4 : S.wind * s.amp * 3); });
+    (set.drift || []).forEach(function (d) { d.o.position.x = d.x + Math.sin(t * d.sp * 0.5 + d.x) * 2.5; d.o.material.opacity = 0.8; });
+    (set.lamps || []).forEach(function (l) { var fl = 0.9 + Math.sin(t * 11 + l.x) * 0.06 + Math.sin(t * 23) * 0.04; l.s.scale.set(0.7 * fl, 0.7 * fl, 1); if (l.light) l.light.intensity = S.L.lamp * fl; });
+    if (S.act && S.act.frame) S.act.frame(dt, t); else applyCam(dt);
+    if (S.shake > 0) { S.shake -= dt; var a = S.shake * 0.16 * (set.figScale || 1); S.camera.position.x += Math.sin(t * 61) * a; S.camera.position.y += Math.cos(t * 53) * a * 0.7; }
+    /* 話し手の光の輪 */
+    var sp = S.speaker && S.figs[S.speaker] && S.figs[S.speaker][0], rm = S.ring.material;
+    rm.opacity += ((sp ? 0.5 : 0) - rm.opacity) * (1 - Math.exp(-dt * 5));
+    if (sp) { var fs = set.figScale || 1; S.ring.position.set(sp.root.position.x, sp.root.position.y + 0.03, sp.root.position.z); S.ring.scale.set(2.6 * fs, 1, 2.6 * fs); }
+    S.ring.visible = rm.opacity > 0.01;
+    /* 霞 */
+    var fogFar = S.mistOn ? 60 * Math.max(1, (set.figScale || 1)) + S.cam.dist : 240;
+    S.scene.fog.far += (fogFar - S.scene.fog.far) * (1 - Math.exp(-dt * 1.5)); S.scene.fog.near = S.mistOn ? S.cam.dist * 0.55 : 60;
+    updateParticles(dt);
+    S.renderer.render(S.scene, S.camera);
+    updateArrows();
+    S.ms = root.performance ? performance.now() - t0 : 0;
+  }
+
+  /* ---------- 遊び（wataru・kaimami） ---------- */
+  function stopActivity() {
+    var a = S.act; if (!a) return;
+    S.act = null; a.dead = true;
+    if (a.cleanup) a.cleanup();
+    if (S.ui) S.ui.innerHTML = '';
+    if (S.wrap) S.wrap.classList.remove('gj3-playing');
+    S.fovOver = 0;
+  }
+  function activity(kind, cfg, cb) {
+    stopActivity();
+    cfg = cfg || {}; cb = cb || {};
+    var A = G.S3A && G.S3A[kind], act = { dead: false, kind: kind };
+    var back = S.node;
+    function finish(result) {
+      if (act.dead) return;
+      stopActivity();
+      if (back && S.el) { load(back); }
+      resize();
+      if (cb.done) cb.done(result);
+    }
+    if (!A || !S.el) { root.setTimeout(function () { if (!act.dead) { act.dead = true; if (cb.done) cb.done({ ok: true, skipped: true, kind: kind }); } }, 0); return { stop: function () { act.dead = true; } }; }
+    S.act = act; S.wrap.classList.add('gj3-playing');
+    try { A(ctx, act, cfg, cb, finish); }
+    catch (e) { root.console && console.error('[Stage3D] activity', e); finish({ ok: true, skipped: true, kind: kind, error: String(e) }); }
+    return { stop: function () { if (S.act === act) { stopActivity(); if (back && S.el) load(back); resize(); } else act.dead = true; } };
+  }
+  /* 遊びの部品に渡す手がかり */
+  var ctx = { S: S, load: load, addFig: addFig, resize: resize, div: div, scr: scr, headOf: headOf, LIGHTS: LIGHTS, fx: fx,
+    say: function (cb, m) { if (!m) return Promise.resolve(); try { return Promise.resolve(cb && cb.say ? cb.say(typeof m === 'string' ? { x: m } : m) : null); } catch (e) { return Promise.resolve(); } } };
+
+  /* 確認用：1 コマ描いて、明るさのばらつきと描画時間を返す（tests/stage-smoke.cjs が使う） */
+  function probe() {
+    if (!S.scene) return null;
+    var t0 = performance.now(); draw(0.016); var ms = performance.now() - t0;
+    var gl = S.renderer.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, n = 24, px = new Uint8Array(4), i, j, sum = 0, sq = 0, c = 0, mn = 255, mx = 0;
+    for (j = 1; j < n; j++) for (i = 1; i < n; i++) {
+      gl.readPixels((w * i / n) | 0, (h * j / n) | 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      var l = (px[0] * 2 + px[1] * 3 + px[2]) / 6; sum += l; sq += l * l; c++; if (l < mn) mn = l; if (l > mx) mx = l;
+    }
+    var info = S.renderer.info;
+    return { ms: ms, mean: sum / c, sd: Math.sqrt(Math.max(0, sq / c - sum * sum / c / c)), min: mn, max: mx, calls: info.render.calls, tris: info.render.triangles, geos: info.memory.geometries, texs: info.memory.textures, figs: S.order.length };
+  }
+
+  G.Stage3D = {
+    supported: supported, mount: mount, unmount: unmount, resize: resize, setQuality: setQuality, setPanel: setPanel,
+    setScene: setScene, focus: focus, speak: speak, pose: pose, fx: fx, arrows: arrows, activity: activity,
+    _probe: probe, _state: S
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
