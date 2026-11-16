@@ -45,12 +45,16 @@ const STEP = () => {
   }
   b = vis('[data-g="check"]') || vis('[data-s2="step"]') || vis('[data-s2="gap"]');
   if (b) return b.click();
+  // 3D の遊び：補助ボタン（自動で歩く・手がかり）で進める
+  b = vis('[data-a3="auto"]');
+  if (b && !b.classList.contains('gj3-on')) return b.click();
 };
-async function play(p, until, guard = 400) {
+async function play(p, until, guard = 700) {
   for (let i = 0; i < guard; i++) {
     if (await p.evaluate(until)) return i;
     await p.evaluate(STEP);
-    await p.waitForTimeout(40);
+    // 3D の遊びの最中は、歩く・目をとめる時間を待つ
+    await p.waitForTimeout(await p.evaluate(() => !!(window.GENJI.Stage3D && window.GENJI.Stage3D._state && window.GENJI.Stage3D._state.act)) ? 300 : 40);
   }
   throw new Error('進みませんでした: mode=' + await p.evaluate(() => window.GENJI.Engine._mode() + ' node=' + (window.GENJI.Engine._state() || {}).node));
 }

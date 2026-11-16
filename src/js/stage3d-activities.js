@@ -32,7 +32,7 @@
     var narrow = cfg.stage === 'watadono';   // 廊ひとつ分を近くで歩く
     var set = ctx.load({ stage: 'kokyu', light: node.light || 'day', season: node.season || 'summer', cast: [] }, { custom: function (env) { return SETS.walk(env, cfg); }, noShadow: true });
     var P = set.path, s0 = narrow ? P.len * 0.40 : 0, s1 = narrow ? P.len * 0.74 : P.len, span = s1 - s0;
-    var s = s0, yaw = 0, pitch = 0, bob = 0, hold = false, auto = false, busy = true, ended = false;
+    var s = s0, yaw = 0, pitch = 0, bob = 0, blockT = 0, hold = false, auto = false, busy = true, ended = false;
     var events = (cfg.events || []).slice().sort(function (a, b) { return a.at - b.at; }), ei = 0, doors = [];
     var speed = span / (narrow ? 22 : 30);
     S.fovOver = S.w / S.h < 0.8 ? 62 : 50; ctx.resize();
@@ -78,6 +78,7 @@
     function clearDoors() { doors.forEach(function (m) { set.dynRoot.remove(m); }); doors = []; shade.classList.remove('gj3-on'); }
     function stage(ev) {
       var k = ev.kind, PH = SETS.PH || 2.6;
+      if (k !== 'door' && k !== 'block' && doors.length) { clearDoors(); yaw = 0; }   // 次の出来事で戸は開く
       if (k === 'door') doors.push(across(s + 4.2, PH, 0.14, '#4a2f1c', PH / 2));
       else if (k === 'block') { doors.push(across(s - 4.5, PH, 0.14, '#4a2f1c', PH / 2)); shade.classList.add('gj3-on'); yaw = PI * 0.92; }
       else if (k === 'dirt') { for (var i = 0; i < 7; i++) { var q = P.at(s + 1.6 + i * 0.55), d = K.bx(set.dynRoot, 0.5 + (i % 3) * 0.3, 0.012, 0.4 + (i % 2) * 0.3, K.mat('#3b2a1c'), q.x + q.dz * ((i % 3) - 1) * 0.7, 0.012, q.z - q.dx * ((i % 3) - 1) * 0.7); d.rotation.y = i; } pitch = -0.42; }
@@ -97,6 +98,8 @@
     act.frame = function (dt) {
       var moving = !busy && !ended && (hold || auto), blocked = false;
       doors.forEach(function (m) { var q = P.at(s + 1.2); if (Math.abs(m.position.x - q.x) + Math.abs(m.position.z - q.z) < 1.4) blocked = true; });
+      /* 戸に行く手をふさがれても、しばらくすると何事もなかったように開く（進めなくならないように） */
+      if (blocked && !busy) { blockT += dt; if (blockT > 3.5) { clearDoors(); blockT = 0; } } else blockT = 0;
       if (moving && !blocked) { s = Math.min(s1, s + speed * dt); bob += dt * 7; }
       if (!hold && !busy) { yaw += (0 - yaw) * (1 - Math.exp(-dt * 0.6)); }
       var q = P.at(s), d = P.dir(s, 1.4), a = Math.atan2(d[0], d[1]) + yaw, cam = S.camera, eye = 1.36 + Math.sin(bob) * 0.025;
