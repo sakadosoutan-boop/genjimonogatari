@@ -89,3 +89,11 @@
 .gj3-shade { position: absolute; inset: 0; bottom: -100%; pointer-events: none !important; background: rgba(8,6,14,0); transition: background .5s; }
 .gj3-shade.gj3-on { background: rgba(8,6,14,.55); }
 @media (prefers-reduced-motion: reduce) { .gj3-arrow-line, .gj3-chev { animation: none; } }
+/* 遊びの補助ボタン（自動で歩く・手がかり） */
+.gj3-auto { position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: 8px; min-height: 44px; min-width: 44px; padding: 6px 14px; font: inherit; font-size: 14px; color: #3a2c20; cursor: pointer; }
+.gj3-auto.gj3-on { background: #7d4f9e; color: #fff8ea; }
+.gj3-go { bottom: 62px; }
+.gj3-chev { pointer-events: auto; cursor: pointer; }
+.gj3-map { top: calc(max(8px, env(safe-area-inset-top)) + 46px); }
+.gj3-note { top: calc(max(8px, env(safe-area-inset-top)) + 46px); }
+.gj3-hint { bottom: 62px; white-space: normal; text-align: center; }
