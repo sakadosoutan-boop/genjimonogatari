@@ -5974,7 +5974,7 @@ html.gj-noruby rt { display: none; }
       S.goal.t.set(h.x, h.y - 0.22 * fs, h.z);
       /* 顔が見える側へ少し回り込む。後ろ向きの人は斜め後ろ姿のまま（絵巻の後ろ姿） */
       S.goal.az = c.az + K.clamp(Math.abs(d) < 1.9 ? d * 0.55 : -Math.sign(d) * (PI - Math.abs(d)) * 0.4, -0.75, 0.75);
-      S.goal.el = 0.36; S.goal.dist = fd * narrow;
+      S.goal.el = 0.66; S.goal.dist = fd * 1.25 * narrow;   // 柱に隠れにくいよう、やや上から
     } else if (S.set.slots[at]) {
       var s = S.set.slots[at]; S.focusAt = at;
       S.goal.t.set(s[0], (s[3] || 0) + 0.6 * fs, s[1]); S.goal.az = c.az; S.goal.el = 0.5; S.goal.dist = fd * 1.5 * narrow;
