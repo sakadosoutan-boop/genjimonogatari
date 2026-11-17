@@ -22,7 +22,7 @@
     soubou: { kaki: [80, 93], kakiL: [50, 93], kakiR: [110, 93], jibutsu: [40, 38] }
   };
   var AUTO = ['naka', 'nakaL', 'nakaR', 'kami', 'shimo', 'kamiL', 'kamiR', 'shimoL', 'shimoR', 'sunoko', 'to', 'misu', 'niwa'];
-  var KEIGO = { sonkei: ['尊敬', '#6a3d8f'], kenjo: ['謙譲', '#a23a4a'], teinei: ['丁寧', '#3d7a5a'] };
+  var KEIGO = { sonkei: ['尊敬', '#6a3d8f'], kenjo: ['謙譲', '#2f5d8c'], teinei: ['丁寧', '#4a7a32'] };   // UI の凡例・3D の矢印と同じ系統
   var LIGHT = { dawn: ['#f3c9c2', .16], day: ['#fff', 0], dusk: ['#d9783a', .24], night: ['#141a3a', .5], moon: ['#1c2550', .4] };
   var SKY = { dawn: ['#f6d8cf', '#f7ecd6'], day: ['#dfe9ea', '#f5efdc'], dusk: ['#e9a56c', '#f2dcb4'], night: ['#1a2040', '#3a3f5e'], moon: ['#222a52', '#59608a'] };
 
@@ -47,18 +47,40 @@
     var female = /juni|kouchiki|shojo|ama/.test(kind), small = { shojo: .8, warawa: .68, chigo: .5 }[kind] || 1;
     var standing = pose === 'stand' || pose === 'run' || pose === 'peek';
     var hy = female ? -11 : -13;            // 頭の高さ
+    var ink = ' stroke="rgba(38,22,30,.55)" stroke-width=".22" stroke-linejoin="round"';
     if (female) {
+      // 長い垂髪：衣の後ろから床まで流れる（尼は肩までの尼削ぎ、少女は扇のように広がる）
+      if (kind === 'ama') k += '<path d="M-3.2 ' + (hy - .6) + ' Q-4.6 ' + (hy + 4) + ' -4.2 ' + (hy + 6.4) + ' L4.2 ' + (hy + 6.4) + ' Q4.6 ' + (hy + 4) + ' 3.2 ' + (hy - .6) + ' Z" fill="#3f3b3e"/>';
+      else if (kind === 'shojo') k += '<path d="M-2.8 ' + (hy - .6) + ' Q-6.4 ' + (hy + 4) + ' -6 ' + (hy + 8.4) + ' Q0 ' + (hy + 10) + ' 6 ' + (hy + 8.4) + ' Q6.4 ' + (hy + 4) + ' 2.8 ' + (hy - .6) + ' Z" fill="#1b1519"/>';
+      else k += '<path d="M-2.9 ' + (hy - .6) + ' Q-5.6 ' + (hy + 5) + ' -6.4 -.4 L-1 -.2 Q-1.4 -3 -.6 ' + (hy + 3) + ' L.6 ' + (hy + 3) + ' Q1.4 -3 1 -.2 L6.6 -.4 Q5.6 ' + (hy + 5) + ' 2.9 ' + (hy - .6) + ' Z" fill="#141015"/>';
+      // 裳（十二単の後ろに引く白い裳）
+      if (kind === 'juni') k += '<path d="M2 -5 Q8 -4 13 -.6 Q9 .8 4 .4 Z" fill="#f6f2ea" opacity=".9"' + ink + '/><path d="M5 -3.4 Q8.6 -2.4 11 -.8" stroke="#c9b07a" stroke-width=".3" fill="none"/>';
       // 女房装束：裾に襲の色がのぞく。外の色から重ねる
-      for (i = col.length - 1; i >= 1; i--) k += mound(7.2 + i * 1.5, 8.6 - i * .5, col[i]);
-      k += mound(7.2, 9.4, col[0], ' stroke="rgba(40,20,40,.35)" stroke-width=".25"');
+      for (i = col.length - 1; i >= 1; i--) k += mound(7.4 + i * 1.6, 8.4 - i * .45, col[i], i === col.length - 1 ? ink : '');
+      k += mound(7.4, 9.4, col[0], ink) + mound(7.4, 9.4, 'url(#gj-s2-shade)');
+      // 袖：左右に重ねの色の口
+      [-1, 1].forEach(function (sd) {
+        var x = sd * 5.4;
+        for (var j = Math.min(col.length, 3) - 1; j >= 0; j--) k += '<ellipse cx="' + (x + sd * j * .5) + '" cy="' + (-3.6 + j * .25) + '" rx="' + (3.2 + j * .45) + '" ry="' + (2.1 + j * .3) + '" fill="' + col[j] + '"' + (j === Math.min(col.length, 3) - 1 ? ink : '') + '/>';
+      });
+      // 文様（金の小さな菱）
+      k += '<path d="M-2.4 -6.4 l.5 -.5 l.5 .5 l-.5 .5 Z M1.6 -4.2 l.5 -.5 l.5 .5 l-.5 .5 Z M-.6 -2 l.5 -.5 l.5 .5 l-.5 .5 Z" fill="rgba(255,240,190,.55)"/>';
       if (kind === 'ama') k += '<path d="M-2.6 ' + (hy - .6) + ' Q0 ' + (hy - 4) + ' 2.6 ' + (hy - .6) + ' L3 ' + (hy + 3) + ' L-3 ' + (hy + 3) + ' Z" fill="#4a4648"/>';
-      else k += '<path d="M-2.7 ' + (hy - .5) + ' Q0 ' + (hy - 4.2) + ' 2.7 ' + (hy - .5) + ' Q4.6 ' + (hy + 6) + ' ' + (kind === 'shojo' ? '4 ' + (hy + 6.5) : '7.5 -0.6') + ' L' + (kind === 'shojo' ? '-4 ' + (hy + 6.5) : '1.5 -1.2') + ' Q-3.6 ' + (hy + 5) + ' -2.7 ' + (hy - .5) + ' Z" fill="#17131a"/>';
+      else k += '<path d="M-2.7 ' + (hy - .5) + ' Q0 ' + (hy - 4.2) + ' 2.7 ' + (hy - .5) + ' Q3.4 ' + (hy + 2.6) + ' 2.6 ' + (hy + 4) + ' L2 ' + (hy + .4) + ' L-2 ' + (hy + .4) + ' L-2.6 ' + (hy + 4) + ' Q-3.4 ' + (hy + 2.6) + ' -2.7 ' + (hy - .5) + ' Z" fill="#17131a"/>';
     } else {
-      // 男の装束・僧・童：縦に長い衣。下に袴（指貫）の色
-      var bw = kind === 'sou' ? 6 : 5.6;
-      k += '<path d="M' + (-bw) + ' 0 L' + (-bw * .62) + ' -11 L' + (bw * .62) + ' -11 L' + bw + ' 0 Z" fill="' + (col[1] || col[0]) + '"/>';
-      k += '<path d="M' + (-bw * 1.25) + ' -3 L' + (-bw * .6) + ' -11.4 L' + (bw * .6) + ' -11.4 L' + (bw * 1.25) + ' -3 Q0 -1.4 ' + (-bw * 1.25) + ' -3 Z" fill="' + col[0] + '" stroke="rgba(30,20,20,.35)" stroke-width=".25"/>';
+      // 男の装束・僧・童：袖の広い袍。下に袴（指貫）の色が広がる
+      var bw = kind === 'sou' ? 6 : 5.6, hk = col[1] || col[0];
+      if (kind !== 'warawa' && kind !== 'chigo' && kind !== 'sou') k += '<path d="M' + (-bw * 1.5) + ' 0 Q' + (-bw * 1.3) + ' -3 ' + (-bw * .7) + ' -4 L' + (bw * .7) + ' -4 Q' + (bw * 1.3) + ' -3 ' + (bw * 1.5) + ' 0 Z" fill="' + hk + '"' + ink + '/>';
+      else k += '<path d="M' + (-bw) + ' 0 L' + (-bw * .62) + ' -11 L' + (bw * .62) + ' -11 L' + bw + ' 0 Z" fill="' + hk + '"/>';
+      k += '<path d="M' + (-bw * 1.25) + ' -2.6 L' + (-bw * .6) + ' -11.4 L' + (bw * .6) + ' -11.4 L' + (bw * 1.25) + ' -2.6 Q0 -1.2 ' + (-bw * 1.25) + ' -2.6 Z" fill="' + col[0] + '"' + ink + '/>';
+      k += '<path d="M' + (-bw * 1.25) + ' -2.6 L' + (-bw * .6) + ' -11.4 L' + (bw * .6) + ' -11.4 L' + (bw * 1.25) + ' -2.6 Q0 -1.2 ' + (-bw * 1.25) + ' -2.6 Z" fill="url(#gj-s2-shade)"/>';
+      // 広い袖（左右に垂れる）
+      if (kind !== 'chigo') [-1, 1].forEach(function (sd) {
+        k += '<path d="M' + (sd * bw * .55) + ' -10.6 Q' + (sd * bw * 1.7) + ' -8.4 ' + (sd * bw * 1.62) + ' -3 L' + (sd * bw * .9) + ' -3.4 Q' + (sd * bw * .9) + ' -7 ' + (sd * bw * .5) + ' -8 Z" fill="' + col[0] + '"' + ink + '/>';
+        if (col[2]) k += '<path d="M' + (sd * bw * 1.62) + ' -3 L' + (sd * bw * .9) + ' -3.4" stroke="' + col[2] + '" stroke-width=".6"/>';
+      });
       if (col[2]) k += '<path d="M-1.6 -11.3 L0 -8.6 L1.6 -11.3 Z" fill="' + col[2] + '"/>';
+      if (kind === 'sokutai') k += '<path d="M-' + (bw * .7) + ' -5.4 H' + (bw * .7) + '" stroke="#c9a44a" stroke-width=".45"/><path d="M-.5 -9.4 L.5 -9.4 L.4 -5 L-.4 -5 Z" fill="#e9dcc0" stroke="#6a5540" stroke-width=".15"/>';
       if (kind === 'sou') k += '<path d="M' + (-bw * .6) + ' -11 L' + (bw * 1.1) + ' -3.4 L' + (bw * .5) + ' -2.6 L' + (-bw * .8) + ' -9 Z" fill="' + (col[1] || '#a58c5c') + '" opacity=".85"/>';
     }
     // 顔（引目のみ。精密な顔は作らない）
@@ -74,8 +96,8 @@
     if (pose === 'pray') k += '<path d="M-.7 ' + (hy + 5) + ' L0 ' + (hy + 3.2) + ' L.7 ' + (hy + 5) + ' Z" fill="#f6ecdc" stroke="#6a5540" stroke-width=".2"/>';
     if (pose === 'write') k += '<rect x="2.6" y="-3.2" width="5" height="2.2" fill="#fbf6e8" stroke="#8a7a5a" stroke-width=".2" transform="rotate(-8 5 -2)"/>';
     if (pose === 'hold') k += '<ellipse cx="2.4" cy="-5.4" rx="2.3" ry="1.7" fill="#f6f0f8" stroke="#b9a05a" stroke-width=".25"/>';
-    // 印（seal）
-    k += '<circle cx="0" cy="-4.4" r="2.9" fill="#fbf5e6" stroke="' + col[0] + '" stroke-width=".5"/><text x="0" y="-3.1" text-anchor="middle" font-size="3.6" fill="#3a2a3c">' + esc(c.seal || '?') + '</text>';
+    // 印（seal）：誰かが一目で分かる小さな名札
+    k += '<circle cx="0" cy="-4.2" r="2.5" fill="#fbf5e6" stroke="' + col[0] + '" stroke-width=".55"/><circle cx="0" cy="-4.2" r="2.05" fill="none" stroke="' + col[0] + '" stroke-width=".18"/><text x="0" y="-3.05" text-anchor="middle" font-size="3.1" font-weight="700" fill="#3a2a3c">' + esc(c.seal || '?') + '</text>';
     var tf = 'scale(' + small + ')';
     if (standing && female) tf += ' scale(.86,1.2)';
     if (standing && !female) tf += ' scale(.95,1.12)';
@@ -167,6 +189,23 @@
       return k;
     }
   };
+  /** 絵の外（縦長の画面で見える上下）を空と地でつなぎ、境目を金雲（すやり霞）で隠す。 */
+  function edge(stage, light) {
+    var low = { kokyu: '#d9cfa6', watadono: '#b9bf98', kitayama: '#6f8f6c' }[stage] || '#b8a070';
+    var k = '<rect x="-80" y="-160" width="320" height="162" fill="url(#gj-s2-sky)"/><rect x="-80" y="98" width="320" height="170" fill="' + low + '"/>';
+    k += '<rect x="-80" y="98" width="320" height="170" fill="url(#gj-s2-low)"/>';
+    return k;
+  }
+  function kumo(y, flip, seed) {
+    // 横に長い雲。輪郭の弧をいくつか重ね、金砂子を散らす
+    var k = '', x = -70 + (seed % 3) * 9;
+    for (var i = 0; i < 6; i++) {
+      var w = 34 + ((seed + i * 7) % 4) * 6, cy = y + (flip ? -1 : 1) * ((i * 3 + seed) % 4), r = 4.2 + ((i + seed) % 3);
+      k += '<path d="M' + x + ' ' + cy + ' q' + (w * .18) + ' ' + (-r) + ' ' + (w * .36) + ' 0 q' + (w * .14) + ' ' + (-r * .8) + ' ' + (w * .3) + ' 0 q' + (w * .2) + ' ' + (-r * .9) + ' ' + (w * .34) + ' 0 l0 ' + (r * 1.3) + ' q' + (-w * .5) + ' ' + (r * .8) + ' ' + (-w) + ' 0 Z" fill="url(#gj-s2-kin)"' + (flip ? ' transform="matrix(1 0 0 -1 0 ' + (cy * 2) + ')"' : '') + '/>';
+      x += w * .82 + 6;
+    }
+    return '<g class="gj-s2-kumo" opacity=".96">' + k + '</g>';
+  }
   function fence() {
     // 小柴垣（僧坊の手前）
     var k = '<g class="gj-s2-fence"><rect x="0" y="84" width="160" height="16" fill="#7c6a48" opacity=".5"/>';
@@ -188,7 +227,7 @@
     S.el = el;
     var wrap = document.createElement('div');
     wrap.className = 'gj-s2';
-    wrap.innerHTML = '<div class="gj-s2-sky"></div><div class="gj-s2-wrap"><div class="gj-s2-box"><svg class="gj-s2-svg" viewBox="0 0 160 100" preserveAspectRatio="xMidYMid slice" role="img" aria-label="絵巻の舞台"></svg><div class="gj-s2-fx"></div><div class="gj-s2-over"></div><div class="gj-s2-label"></div></div><div class="gj-s2-ctl"></div></div>';
+    wrap.innerHTML = '<div class="gj-s2-sky"></div><div class="gj-s2-wrap"><div class="gj-s2-box"><svg class="gj-s2-svg" viewBox="0 0 160 100" preserveAspectRatio="xMidYMid slice" role="img" aria-label="絵巻の舞台"></svg><div class="gj-s2-grain" aria-hidden="true"></div><div class="gj-s2-fx"></div><div class="gj-s2-over"></div><div class="gj-s2-label"></div></div><div class="gj-s2-ctl"></div></div>';
     el.appendChild(wrap);
     S.wrap = wrap;
     S.box = wrap.querySelector('.gj-s2-box');
@@ -199,7 +238,12 @@
     S.label = wrap.querySelector('.gj-s2-label');
     S.svg.innerHTML = '<defs>' + Object.keys(KEIGO).map(function (k) {
       return '<marker id="gj-s2-ah-' + k + '" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="' + KEIGO[k][1] + '"/></marker>';
-    }).join('') + '</defs>';
+    }).join('') +
+      '<linearGradient id="gj-s2-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#2a1830" stop-opacity=".22"/></linearGradient>' +
+      '<linearGradient id="gj-s2-kin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3e2a8"/><stop offset=".6" stop-color="#e2c98a"/><stop offset="1" stop-color="#c9a85a"/></linearGradient>' +
+      '<linearGradient id="gj-s2-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--s2-sky0, #efe6cf)"/><stop offset="1" style="stop-color:var(--s2-sky1, #f5efdc)"/></linearGradient>' +
+      '<linearGradient id="gj-s2-low" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#3a2a1a" stop-opacity=".25"/></linearGradient>' +
+      '</defs>';
     S.cam = g('gj-s2-cam');
     S.svg.appendChild(S.cam);
     ['back', 'cast', 'front', 'tint', 'arrows'].forEach(function (n) { S.layer[n] = g('gj-s2-' + n); S.cam.appendChild(S.layer[n]); });
@@ -213,7 +257,25 @@
     if (S.wrap && S.wrap.parentNode) S.wrap.parentNode.removeChild(S.wrap);
     S.el = S.wrap = S.svg = S.ctl = S.over = S.fxEl = S.label = S.cam = null; S.layer = {}; S.cast = {}; S.order = []; S.scene = null;
   }
-  function resize() {}
+  /** 画面の縦横に合わせて、絵の見える範囲（viewBox）を決める。縦長では人物のいる所を中心に寄せ、上下は空と金雲でつなぐ。 */
+  var VB = { x: 0, y: 0, w: W, h: H };
+  function resize() {
+    if (!S.svg || !S.box) return;
+    var bw = S.box.clientWidth, bh = S.box.clientHeight;
+    if (!bw || !bh) return;
+    var a = bw / bh;
+    if (a >= 1.5) { VB = { x: 0, y: 0, w: W, h: H }; S.svg.setAttribute('viewBox', '0 0 160 100'); S.svg.setAttribute('preserveAspectRatio', 'xMidYMid slice'); return; }
+    var xs = S.order.map(function (id) { return S.cast[id].x; });
+    var lo = xs.length ? Math.min.apply(null, xs) - 16 : 30, hi = xs.length ? Math.max.apply(null, xs) + 16 : 130;
+    var big = S.stage === 'kokyu' || S.stage === 'kitayama';          // 地図のような舞台は全体を見せる
+    var vw = big ? W : Math.max(100, Math.min(W, hi - lo));
+    if (H * a > vw) vw = Math.min(W, H * a);
+    var cx = Math.max(vw / 2, Math.min(W - vw / 2, (lo + hi) / 2));
+    var vh = vw / a, vy = H / 2 - vh / 2 - Math.max(0, vh - H) * .08;     // 上の余白を少し多めに（金雲と空）
+    VB = { x: cx - vw / 2, y: vy, w: vw, h: vh };
+    S.svg.setAttribute('viewBox', VB.x.toFixed(2) + ' ' + VB.y.toFixed(2) + ' ' + vw.toFixed(2) + ' ' + vh.toFixed(2));
+    S.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  }
   function setQuality(q) { S.quality = q; }
 
   function place(id) {
@@ -244,9 +306,11 @@
     S.wrap.querySelector('.gj-s2-sky').style.background = 'linear-gradient(180deg,' + sky[0] + ',' + sky[1] + ')';
     S.wrap.setAttribute('data-light', light);
     S.wrap.setAttribute('data-stage', n.stage || '');
-    S.layer.back.innerHTML = (BACK[n.stage] || BACK.kiritsubo)() + seasonDeco(n.season, n.stage);
+    S.svg.style.setProperty('--s2-sky0', sky[0]); S.svg.style.setProperty('--s2-sky1', sky[1]);
+    var sd = String(n.stage || '').length;
+    S.layer.back.innerHTML = edge(n.stage, light) + (BACK[n.stage] || BACK.kiritsubo)() + seasonDeco(n.season, n.stage) + kumo(-1, false, sd) + kumo(100.5, true, sd + 1);
     S.layer.front.innerHTML = n.stage === 'soubou' ? fence() : '';
-    S.layer.tint.innerHTML = '<rect width="160" height="100" fill="' + LIGHT[light][0] + '" opacity="' + LIGHT[light][1] + '" pointer-events="none"/>' +
+    S.layer.tint.innerHTML = '<rect x="-80" y="-160" width="320" height="430" fill="' + LIGHT[light][0] + '" opacity="' + LIGHT[light][1] + '" pointer-events="none"/>' +
       (light === 'moon' ? '<circle cx="138" cy="14" r="6" fill="#f6efc8" opacity=".95"/>' : '') +
       (light === 'night' ? '<circle cx="24" cy="30" r="9" fill="#f2c56a" opacity=".22"/>' : '');
     S.layer.arrows.innerHTML = '';
@@ -266,6 +330,7 @@
     sortDolls();
     var spec = G.stageSpec && G.stageSpec.stages && G.stageSpec.stages[n.stage];
     S.label.textContent = spec ? spec.name : '';
+    resize();
     focus('wide'); speak(null);
     return Promise.resolve();
   }
@@ -274,8 +339,10 @@
     var xy = null;
     if (at && at !== 'wide') xy = S.cast[at] ? [S.cast[at].x, S.cast[at].y - 8] : slotXY(S.stage, at);
     if (!xy) { S.cam.setAttribute('style', 'transform:none'); return; }
-    var z = 1.55, tx = W / 2 - xy[0] * z, ty = H / 2 - xy[1] * z;
-    tx = Math.min(0, Math.max(W - W * z, tx)); ty = Math.min(0, Math.max(H - H * z, ty));
+    // 見えている範囲の中心へ寄せる。絵の外が見えすぎないように留める
+    var z = VB.w < W ? 1.35 : 1.55, cx = VB.x + VB.w / 2, cy = VB.y + VB.h / 2;
+    function hold(t, v0, vl, pl) { return pl >= vl ? Math.min(v0, Math.max(v0 + vl - pl, t)) : v0 + (vl - pl) / 2; }
+    var tx = hold(cx - xy[0] * z, VB.x, VB.w, W * z), ty = hold(cy - xy[1] * z, VB.y, VB.h, H * z);
     S.cam.setAttribute('style', 'transform:translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + z + ')');
   }
   function speak(id) {

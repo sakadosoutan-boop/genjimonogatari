@@ -3,7 +3,22 @@
 /* ---------- 原文の段 ---------- */
 .gj-gen-h { margin-bottom: 6px; }
 .gj-gen-h b { letter-spacing: .1em; }
-.gj-layers { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.gj-layers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 8px; }
+.gj-layers-k { font-size: 11px; letter-spacing: .3em; color: var(--gj-usuzumi); margin-right: 2px; }
+.gj-layer { display: inline-flex; align-items: center; gap: 6px; padding: 2px 14px 2px 10px; }
+.gj-layer i { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid currentColor; opacity: .55; position: relative; }
+.gj-layer[aria-pressed="true"] i { opacity: 1; background: #fff8e6; border-color: #fff8e6; }
+.gj-layer[aria-pressed="true"] i::after { content: ""; position: absolute; left: 3.5px; top: .5px; width: 4px; height: 8px; border: solid var(--gj-murasaki); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.gj-gen-leg { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0 0 8px; padding: 6px 10px; border-radius: 6px; background: rgba(255, 255, 255, .5); border: 1px dashed var(--gj-line2); font-size: 12px; color: var(--gj-usuzumi); }
+.gj-gen-leg .gj-legend { margin: 0; }
+.gj-leg-h { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.gj-leg-h i { font-style: normal; padding: 0 6px; border-radius: 3px; border-bottom: 3px solid var(--p); color: var(--gj-sumi); background: rgba(255, 255, 255, .7); line-height: 1.7; }
+.gj-tip { display: grid; gap: 4px; margin-top: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--gj-kin); background: #fffaf0; font-size: .92em; line-height: 1.75; box-shadow: 0 4px 12px rgba(60, 30, 80, .12); animation: gj-slide .25s ease both; }
+.gj-tip > b { font-size: 1.05em; color: var(--gj-murasaki); letter-spacing: .08em; justify-self: start; }
+.gj-tip .gj-mini { justify-self: end; }
+.gj-tip .gj-arrow { font-size: .92em; }
+[data-st="tip"] { cursor: pointer; }
+.gj-hot { outline: 2px solid var(--gj-kin); outline-offset: 1px; border-radius: 2px; background-color: rgba(226, 201, 138, .4); }
 .gj-gen-text { padding: 12px 14px; font-size: 1.12em; line-height: 2.3; letter-spacing: .06em; color: var(--gj-sumi); background: rgba(255, 255, 255, .55); border: 1px solid var(--gj-line); border-radius: 4px;
   background-image: repeating-linear-gradient(0deg, transparent 0 calc(2.3em - 1px), rgba(93, 58, 122, .1) calc(2.3em - 1px) 2.3em); background-position: 0 12px; }
 .gj-gen-text.gj-vt { writing-mode: vertical-rl; height: 15em; max-height: 46vh; width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
@@ -13,23 +28,26 @@
 /* 重ねた層：語注は波線、敬語は種類ごとの色 */
 .gj-u-chu { text-decoration: underline wavy var(--gj-kin); text-underline-offset: 5px; }
 .gj-u-k { border-radius: 2px; padding: 1px 0; font-style: normal; }
-.gj-u-k.k-sonkei { background: rgba(93, 58, 122, .2); box-shadow: 0 2px 0 var(--gj-murasaki); }
-.gj-u-k.k-kenjo { background: rgba(142, 53, 72, .18); box-shadow: 0 2px 0 var(--gj-suou); }
-.gj-u-k.k-teinei { background: rgba(61, 122, 90, .2); box-shadow: 0 2px 0 #3d7a5a; }
-.gj-vt .gj-u-k.k-sonkei { box-shadow: -2px 0 0 var(--gj-murasaki); }
-.gj-vt .gj-u-k.k-kenjo { box-shadow: -2px 0 0 var(--gj-suou); }
-.gj-vt .gj-u-k.k-teinei { box-shadow: -2px 0 0 #3d7a5a; }
+.gj-u-k.k-sonkei { background: rgba(106, 61, 143, .18); box-shadow: 0 2px 0 var(--gj-k-sonkei); }
+.gj-u-k.k-kenjo { background: rgba(47, 93, 140, .16); box-shadow: 0 2px 0 var(--gj-k-kenjo); }
+.gj-u-k.k-teinei { background: rgba(74, 122, 50, .18); box-shadow: 0 2px 0 var(--gj-k-teinei); }
+.gj-vt .gj-u-k.k-sonkei { box-shadow: -2px 0 0 var(--gj-k-sonkei); }
+.gj-vt .gj-u-k.k-kenjo { box-shadow: -2px 0 0 var(--gj-k-kenjo); }
+.gj-vt .gj-u-k.k-teinei { box-shadow: -2px 0 0 var(--gj-k-teinei); }
 /* 品詞分解：語ごとの札 */
 .gj-toks { display: inline; }
-.gj-tok { display: inline-flex; flex-direction: column; align-items: center; margin: 3px 1px; padding: 2px 4px; vertical-align: top; border-left: 1px solid var(--gj-line); line-height: 1.4; }
+/* 品詞の色：名詞＝墨、動詞＝紫、形容詞＝金茶、助動詞＝蘇芳、助詞＝萌黄、副詞など＝縹 */
+.p-meishi { --p: #7a6e76; } .p-doshi { --p: #6a3d8f; } .p-keiyo { --p: #b0802a; } .p-jodoshi { --p: #a23a4a; } .p-joshi { --p: #5d7a4a; } .p-fuku { --p: #2f6f8c; } .p-other { --p: #b9b0bb; }
+.gj-tok { display: inline-flex; flex-direction: column; align-items: center; margin: 3px 1px 6px; padding: 2px 5px 1px; vertical-align: top; border-bottom: 3px solid var(--p, var(--gj-line)); border-radius: 3px 3px 0 0; background: rgba(255, 255, 255, .55); line-height: 1.4; }
 .gj-tok b { font-weight: 400; font-size: 1em; white-space: nowrap; }
-.gj-tok i { font-style: normal; font-size: .5em; color: var(--gj-usuzumi); letter-spacing: 0; max-width: 7em; text-align: center; line-height: 1.3; }
-.gj-tok u { display: block; text-decoration: none; }
-.gj-tok.k-sonkei { background: rgba(93, 58, 122, .16); } .gj-tok.k-sonkei i { color: var(--gj-murasaki); }
-.gj-tok.k-kenjo { background: rgba(142, 53, 72, .14); } .gj-tok.k-kenjo i { color: var(--gj-suou); }
-.gj-tok.k-teinei { background: rgba(61, 122, 90, .16); } .gj-tok.k-teinei i { color: #2f6046; }
+.gj-tok i { font-style: normal; font-size: .52em; color: var(--gj-usuzumi); letter-spacing: 0; max-width: 7em; text-align: center; line-height: 1.35; }
+@supports (color: color-mix(in srgb, red 50%, blue)) { .gj-tok i { color: color-mix(in srgb, var(--p, #6b5f66) 75%, #000); } }
+.gj-tok u { display: block; text-decoration: none; font-weight: 700; }
+.gj-tok.k-sonkei { background: rgba(106, 61, 143, .14); box-shadow: inset 0 0 0 1px rgba(106, 61, 143, .35); } .gj-tok.k-sonkei u { color: var(--gj-k-sonkei); }
+.gj-tok.k-kenjo { background: rgba(47, 93, 140, .12); box-shadow: inset 0 0 0 1px rgba(47, 93, 140, .35); } .gj-tok.k-kenjo u { color: var(--gj-k-kenjo); }
+.gj-tok.k-teinei { background: rgba(74, 122, 50, .14); box-shadow: inset 0 0 0 1px rgba(74, 122, 50, .35); } .gj-tok.k-teinei u { color: var(--gj-k-teinei); }
 .gj-gen h5 { margin: 12px 0 2px; font-size: .74em; letter-spacing: .25em; color: var(--gj-suou); }
-.gj-gen-yaku p { margin: 0; padding: 6px 12px; border-left: 3px solid var(--gj-fuji); background: rgba(243, 233, 241, .6); font-size: .95em; }
+.gj-gen-yaku p { margin: 0; padding: 8px 14px; border-left: 3px solid var(--gj-fuji); background: rgba(243, 233, 241, .6); font-size: .95em; line-height: 1.95; }
 .gj-gen-chu { margin: 10px 0 0; display: grid; gap: 4px; font-size: .9em; }
 .gj-gen-chu > div { display: grid; grid-template-columns: minmax(5em, auto) 1fr; gap: 10px; padding: 3px 0; border-bottom: 1px dotted var(--gj-line); }
 .gj-gen-chu dt { font-weight: 700; color: #7a5a14; }
@@ -50,13 +68,26 @@
 .gj-book-tab.on { background: var(--gj-murasaki); color: #fff8e6; border-color: var(--gj-murasaki); }
 .gj-book-tab.on small, .gj-book-tab.on i { color: #f3e0b0; }
 .gj-book-tab:disabled { opacity: .45; }
+.gj-book-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--gj-line); }
+.gj-book-nav span { font-size: .8em; color: var(--gj-usuzumi); letter-spacing: .1em; }
 
 /* ---------- 図鑑 ---------- */
+.gj-zk-q { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 0 4px 0 12px; border: 1px solid var(--gj-line2); border-radius: 24px; background: #fff; }
+.gj-zk-q:focus-within { border-color: var(--gj-murasaki); box-shadow: 0 0 0 3px rgba(93, 58, 122, .18); }
+.gj-zk-q span { font-size: 12px; letter-spacing: .2em; color: var(--gj-usuzumi); white-space: nowrap; }
+.gj-zk-q input { flex: 1; min-width: 0; min-height: 44px; border: 0; background: transparent; font: inherit; font-size: 16px; color: var(--gj-sumi); outline: none; }
+.gj-zk-n { margin: 0 0 6px; font-size: .78em; color: var(--gj-usuzumi); }
 .gj-zk-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .gj-zk-list { display: grid; gap: 6px; }
-.gj-zk-row { min-height: 52px; padding: 6px 12px; display: grid; gap: 2px; border: 1px solid var(--gj-line); border-radius: 4px; background: rgba(255, 255, 255, .5); text-align: left; line-height: 1.4; }
+.gj-zk-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.gj-zk-row { min-height: 56px; padding: 7px 12px; display: grid; gap: 2px; border: 1px solid var(--gj-line2); border-left: 4px solid var(--z, var(--gj-fuji)); border-radius: 4px 6px 6px 4px; background: rgba(255, 255, 255, .58); text-align: left; line-height: 1.45; transition: background-color .15s, border-color .15s; }
+.gj-zk-row:hover { background: #fff; }
+.gj-zk-row b { letter-spacing: .04em; }
+.gj-zk-row b i { margin-left: 8px; font-style: normal; font-weight: 400; font-size: .7em; color: var(--gj-usuzumi); }
 .gj-zk-row span { font-size: .76em; color: var(--gj-usuzumi); }
-.gj-zk-item h4 { margin: 10px 0 6px; font-size: 1.2em; color: var(--gj-murasaki); letter-spacing: .08em; }
+.c-keigo { --z: var(--gj-k-sonkei); } .c-jodoshi { --z: #a23a4a; } .c-joshi { --z: #5d7a4a; } .c-kogo { --z: #b0802a; } .c-shikitari { --z: #2f6f8c; } .c-waka { --z: var(--gj-kin); }
+.gj-zk-item h4 { margin: 12px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--gj-line); font-size: 1.25em; color: var(--gj-murasaki); letter-spacing: .08em; }
+.gj-zk-item > p { line-height: 1.95; max-width: 44em; }
 .gj-zk-item h4 small { margin-left: 10px; font-size: .55em; color: var(--gj-usuzumi); font-weight: 400; }
 .gj-zk-item p { margin: 0 0 8px; }
 .gj-zk-rei h5 { margin: 10px 0 4px; font-size: .74em; letter-spacing: .25em; color: var(--gj-suou); }

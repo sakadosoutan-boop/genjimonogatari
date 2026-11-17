@@ -33,7 +33,7 @@
   function chMeta(id) {
     var c = meta.ch[id];
     if (!c || typeof c !== 'object') c = meta.ch[id] = {};
-    ['gen', 'cleared', 'endings', 'missed'].forEach(function (k) { if (!c[k] || typeof c[k] !== 'object' || Array.isArray(c[k])) c[k] = {}; });
+    ['gen', 'cleared', 'endings', 'missed', 'stat'].forEach(function (k) { if (!c[k] || typeof c[k] !== 'object' || Array.isArray(c[k])) c[k] = {}; });
     if (!c.save || typeof c.save !== 'object') c.save = null;
     return c;
   }
@@ -76,14 +76,14 @@
   function freshState(chId, key) {
     var ch = G.chapters[chId], ix = index(chId), m = {};
     (ch.meters || []).forEach(function (x) { m[x.id] = typeof x.init === 'number' ? x.init : (x.min || 0); });
-    return { ch: chId, node: key || ix.keys[0], act: null, meters: m, flags: {}, q: 0, ok: 0, picks: [], log: [], phase: null, met: {}, hinted: {}, seed: Math.floor(Math.random() * 1e9) };
+    return { ch: chId, node: key || ix.keys[0], act: null, meters: m, flags: {}, q: 0, ok: 0, picks: [], log: [], phase: null, met: {}, hinted: {}, astat: {}, seed: Math.floor(Math.random() * 1e9) };
   }
   function hydrate(chId, saved) {
     var s = freshState(chId), ix = index(chId);
     if (!saved || typeof saved !== 'object' || !ix.map[saved.node]) return null;
     s.node = saved.node;
     ['q', 'ok', 'seed'].forEach(function (k) { if (typeof saved[k] === 'number' && isFinite(saved[k])) s[k] = saved[k]; });
-    ['flags', 'met', 'hinted'].forEach(function (k) { if (saved[k] && typeof saved[k] === 'object' && !Array.isArray(saved[k])) s[k] = saved[k]; });
+    ['flags', 'met', 'hinted', 'astat'].forEach(function (k) { if (saved[k] && typeof saved[k] === 'object' && !Array.isArray(saved[k])) s[k] = saved[k]; });
     if (saved.meters && typeof saved.meters === 'object') Object.keys(s.meters).forEach(function (k) { if (typeof saved.meters[k] === 'number') s.meters[k] = saved.meters[k]; });
     if (Array.isArray(saved.picks)) s.picks = saved.picks.filter(function (p) { return p && typeof p === 'object'; });
     if (Array.isArray(saved.log)) s.log = saved.log.filter(Array.isArray);
@@ -97,27 +97,39 @@
     var ch = chapterNow();
     return (ch.meters || []).map(function (m) { return { id: m.id, name: m.name, desc: m.desc, tone: m.tone, min: m.min || 0, max: typeof m.max === 'number' ? m.max : 10, val: st.meters[m.id] }; });
   }
-  /** 選択肢やノードの効果（メーターの増減・フラグ）を当てる。 */
-  function apply(o) {
+  /** 選択肢やノードの効果（メーターの増減・フラグ）を当てる。reason は「なぜ動いたか」の一言（画面の小さな札に出す）。 */
+  function apply(o, reason) {
     if (!o) return;
-    var ch = chapterNow();
+    var ch = chapterNow(), moved = [];
     if (o.fx) Object.keys(o.fx).forEach(function (k) {
       var def = (ch.meters || []).filter(function (m) { return m.id === k; })[0];
       if (!def || typeof o.fx[k] !== 'number') return;
-      var max = typeof def.max === 'number' ? def.max : 10;
-      st.meters[k] = Math.max(def.min || 0, Math.min(max, (st.meters[k] || 0) + o.fx[k]));
-      UI.meters(meterList(), classroom()); UI.bumpMeter(k);
+      var max = typeof def.max === 'number' ? def.max : 10, was = st.meters[k] || 0;
+      st.meters[k] = Math.max(def.min || 0, Math.min(max, was + o.fx[k]));
+      var d = st.meters[k] - was;
+      if (d) moved.push({ id: k, name: def.name, tone: def.tone, delta: d });
     });
+    if (moved.length) {
+      UI.meters(meterList(), classroom());
+      moved.forEach(function (x) { UI.bumpMeter(x.id, x.delta); });
+      if (UI.meterNote) UI.meterNote(moved, reason ? clip(reason, 22) : '');
+    }
     if (o.set) Object.keys(o.set).forEach(function (k) { st.flags[k] = o.set[k]; });
   }
+  function clip(s, n) { s = G.plain(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
   function test(n) {
     if (n.f && !st.flags[n.f]) return false;
     if (n.m && !Object.keys(n.m).every(function (k) { return (st.meters[k] || 0) >= n.m[k]; })) return false;
     return !!(n.f || n.m);
   }
-  function logLine(w, x, gen) {
-    st.log.push([w || '', x, gen ? 1 : 0]);
-    if (st.log.length > 80) st.log.shift();
+  /** 履歴に一行。kind：省くと文、'act'＝段の見出し、'q'＝問い（extra＝種類）、'a'＝自分の答え（extra＝1 正・0 誤・-1 決断）。 */
+  function logLine(w, x, gen, kind, extra) {
+    var l = [w || '', x, gen ? 1 : 0];
+    if (kind) { l.push(kind); if (extra !== undefined) l.push(extra); }
+    // 再開したときに同じ見出し・問いを重ねない
+    if (kind === 'q' && st.log.slice(-4).some(function (m) { return m[3] === 'q' && m[1] === x; })) return;
+    st.log.push(l);
+    if (st.log.length > 160) st.log.shift();
   }
 
   /* ---------- 舞台（3D／絵巻の切り替えと、落ちたときの受け皿） ---------- */
@@ -181,6 +193,7 @@
     if (++hops > 400) { warn('分岐が堂々めぐりになっています：' + key); return finish(null); }
     var ch = chapterNow(), cm = chMeta(st.ch);
     if (st.act && st.act !== e.act.id && !resuming) cm.cleared[st.act] = 1;      // 段を読み終えた
+    if (st.act !== e.act.id && !st.log.some(function (l) { return l[3] === 'act' && l[1] === e.act.title; })) logLine('', e.act.title, 0, 'act');
     st.act = e.act.id;
     st.node = key; cur = e.n;
     if (!resuming) st.phase = null;
@@ -261,6 +274,7 @@
     stg('speak', povId(n.w));
     meet(n.w);
     var p = st.phase;
+    logLine('', n.q, 0, 'q', n.k);
     if (resuming && p && p.kind === 'react') return showReact();
     UI.ask(n, { order: askOrder(n, key), pov: chapterNow().pov, hinted: !!st.hinted[key], wrong: p && p.kind === 'retry' ? p.wrong : null });
     if (resuming && p && p.kind === 'feedback') showFeedback(n);
@@ -287,8 +301,8 @@
     if (!SCORED[n.k]) {
       // 決断：正誤を数えない。選んだ道へ進む
       st.picks.push({ k: n.k, q: G.plain(n.q), a: optLabel(o) });
-      logLine(chapterNow().pov, optLabel(o));
-      apply(o);
+      logLine(chapterNow().pov, optLabel(o), 0, 'a', -1);
+      apply(o, 'あなたの決断');
       to = o.go || nextOf(key);
       if (o.r) { st.phase = { node: key, kind: 'react', after: to, r: o.r, rw: o.rw || null }; logLine(o.rw, o.r); persist(); return showReact(); }
       return go(to);
@@ -298,20 +312,24 @@
       // 授業モードの一度目：答えを見せず、ヒントを添えて選び直す（読解率は、この一度目で数える）
       st.phase = { node: key, kind: 'retry', wrong: [i], first: i };
       cm.missed[key] = (cm.missed[key] || 0) + 1;
+      logLine(chapterNow().pov, optLabel(o), 0, 'a', 0);
       persist();
       return UI.askRetry(n, [i]);
     }
     var right = n.o.filter(function (x) { return x.ok; })[0], firstOk = !!o.ok && !retried;
     st.q++; if (firstOk) st.ok++;
+    var as = st.astat[st.act] = Array.isArray(st.astat[st.act]) ? st.astat[st.act] : [0, 0];
+    as[0]++; if (firstOk) as[1]++;
+    cm.stat[st.act] = as.slice();
     if (!o.ok && !retried) cm.missed[key] = (cm.missed[key] || 0) + 1;
     // 授業モードで二度目も読み違えたときは、本文の読み（正解）の道で物語を進める
     var eff = classroom() && !o.ok && right ? right : o;
-    apply(eff);
+    apply(eff, firstOk ? '読み解いた' : '読み違えた');
     to = eff.go || nextOf(key);
     var first = retried ? n.o[p.first] : o;
     st.picks.push({ k: n.k, q: G.plain(n.q), a: optLabel(first), ok: firstOk, right: optLabel(right) });
     if (st.picks.length > 60) st.picks.shift();
-    logLine(chapterNow().pov, optLabel(o));
+    logLine(chapterNow().pov, optLabel(o), 0, 'a', o.ok ? (retried ? 2 : 1) : 0);
     st.phase = { node: key, kind: 'feedback', choice: i, ok: !!o.ok, retried: retried, after: to, r: eff.r || null, rw: eff.rw || null };
     persist();
     showFeedback(n);
@@ -413,6 +431,7 @@
     saveMeta();
     screenNow = 'end';
     UI.ending({ ch: ch, ending: e, q: st.q, ok: st.ok, picks: st.picks, meters: meterList(), furikaeri: ch.furikaeri || [],
+      acts: (ch.acts || []).map(function (a) { var x = st.astat[a.id]; return { id: a.id, title: a.title, q: x ? x[0] : 0, ok: x ? x[1] : 0 }; }),
       bound: (ch.genbun || []).filter(function (g) { return cm.gen[g.id]; }).length, genTotal: (ch.genbun || []).length });
   }
 
@@ -434,8 +453,9 @@
     mode = 'title'; screenNow = 'title'; st = null; cur = null;
     var last = meta.last && G.chapters[meta.last] && hasSave(meta.last) ? { id: meta.last, title: G.chapters[meta.last].title, where: whereOf(meta.last) } : null;
     UI.title({ classroom: classroom(), last: last, chapters: (G.chapterOrder || []).map(function (id) {
-      var c = G.chapters[id], cm = chMeta(id);
-      return { id: id, no: c.no, title: c.title, sub: c.sub, povNote: c.povNote, total: (c.acts || []).length,
+      var c = G.chapters[id], cm = chMeta(id), pc = G.chars && G.chars[c.pov];
+      return { id: id, no: c.no, title: c.title, sub: c.sub, povNote: c.povNote, total: (c.acts || []).length, color: pc && pc.look && pc.look.colors ? pc.look.colors[0] : null,
+        rate: cm.q ? Math.round((cm.ok || 0) / cm.q * 100) : null,
         cleared: (c.acts || []).filter(function (a) { return cm.cleared[a.id]; }).length, endings: Object.keys(cm.endings).length, hasSave: hasSave(id) };
     }) });
   }
@@ -445,9 +465,12 @@
     if (!ch) return showTitle();
     leave();
     mode = 'title'; screenNow = 'chapter:' + chId; st = null; cur = null;
-    var cm = chMeta(chId);
-    UI.chapter({ ch: ch, hasSave: hasSave(chId), where: whereOf(chId),
-      acts: (ch.acts || []).map(function (a, i) { return { id: a.id, title: a.title, scope: a.scope, minutes: a.minutes, cleared: !!cm.cleared[a.id], open: actOpen(ch, cm, i) }; }),
+    var cm = chMeta(chId), ix = index(chId), here = hasSave(chId) ? ix.map[cm.save.node].act.id : null;
+    UI.chapter({ ch: ch, hasSave: hasSave(chId), where: whereOf(chId), classroom: classroom(),
+      acts: (ch.acts || []).map(function (a, i) {
+        var x = Array.isArray(cm.stat[a.id]) ? cm.stat[a.id] : null;
+        return { id: a.id, title: a.title, scope: a.scope, minutes: a.minutes, cleared: !!cm.cleared[a.id], open: actOpen(ch, cm, i), here: a.id === here, q: x ? x[0] : 0, ok: x ? x[1] : 0 };
+      }),
       endings: Object.keys(cm.endings).map(function (e) { return ch.endings && ch.endings[e] ? G.plain(ch.endings[e].title) : e; }) });
   }
   function begin(state, resuming) {
@@ -517,13 +540,25 @@
     'continue': function (b) { continueSave(b.getAttribute('data-ch')); },
     quit: showTitle,
     toc: function () { if (st) showChapter(st.ch); },
-    menu: function () { UI.modal({ id: 'menu', title: st ? chapterNow().title : 'メニュー', html: UI.menuHTML({ rate: st && st.q ? '読解率 ' + Math.round(st.ok / st.q * 100) + '％（' + st.ok + '／' + st.q + '）' : '' }) }); },
+    menu: function () { UI.modal({ id: 'menu', title: st ? chapterNow().title + '　' + (entry(st.node) ? entry(st.node).act.title : '') : 'メニュー', html: UI.menuHTML({ sound: meta.settings.sound, rate: st && st.q ? 'この読みの読解率 ' + Math.round(st.ok / st.q * 100) + '％（' + st.ok + '／' + st.q + ' 問・一度目の答え）' : '' }) }); },
     book: function (b) { var id = (b && b.getAttribute('data-ch')) || (st && st.ch); if (id) G.Study.openBook(id, cur && cur.t === 'gen' ? cur.g : null); },
     zukan: function () { G.Study.openZukan(); },
     chars: function (b) { var id = (b && b.getAttribute('data-ch')) || (st && st.ch); if (id) G.Study.openChars(id); },
-    log: function () { UI.modal({ id: 'log', title: 'これまでの文', html: UI.logHTML(st ? st.log : []), push: true }); },
+    log: function () { UI.modal({ id: 'log', title: '履歴　これまでの文と答え', html: UI.logHTML(st ? st.log : [], chapterNow() && chapterNow().pov), push: UI.modalId() === 'menu', wide: true, scroll: 'end' }); },
+    howto: function () { UI.modal({ id: 'howto', title: '遊び方', html: UI.howtoHTML(), push: !!UI.modalId() }); },
+    sound: function () {
+      meta.settings.sound = !meta.settings.sound;
+      refresh();
+      if (UI.modalId() === 'menu') ACT.menu();
+      if (meta.settings.sound) UI.sfx('on');
+      UI.toast(meta.settings.sound ? '効果音を入れました' : '効果音を切りました');
+    },
+    copy: function () {
+      UI.copyText(UI.summaryText()).then(function (ok) { UI.toast(ok ? '学習記録をコピーしました' : 'コピーできませんでした。印刷を使ってください'); });
+    },
+    print: function () { try { root.print(); } catch (e) {} },
     settings: function () { openSettings(UI.modalId() === 'menu'); },
-    set: function (b) { var k = b.getAttribute('data-k'); if (k in meta.settings) { meta.settings[k] = !meta.settings[k]; refresh(); } },
+    set: function (b) { var k = b.getAttribute('data-k'); if (k in meta.settings) { meta.settings[k] = !meta.settings[k]; refresh(); if (k === 'sound' && meta.settings.sound) UI.sfx('on'); } },
     mode: function (b) { setMode(b.getAttribute('data-v') === '1'); },
     view: function (b) { setView(b.getAttribute('data-v')); },
     erase: function (b) {

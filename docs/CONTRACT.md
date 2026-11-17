@@ -19,7 +19,8 @@
 | `src/data/stage-spec.js` | 舞台・立ち位置・姿勢・効果などの語彙（データが使ってよい名前の一覧） |
 | `src/data/bunpo.js` | 文法・敬語・古語の図鑑（共通） |
 | `src/data/kiritsubo.js` / `wakamurasaki.js` | 帖のデータ（物語ノード・原文帳・結末） |
-| `src/js/stage3d-kit.js` `stage3d-figures.js` `stage3d-sets.js` `stage3d-activities.js` `stage3d.js` | 3D 舞台（`GENJI.Stage3D`） |
+| `src/js/stage3d-kit.js` `stage3d-figures.js` `stage3d-hd.js` `stage3d-sets.js` `stage3d-activities.js` `stage3d.js` | 3D 舞台（`GENJI.Stage3D`）。`stage3d-hd.js` は高精細の人物（`GENJI.S3H`） |
+| `src/js/stage3d-hd-assets.js` | 高精細の人物の頭部・手の網目（約 4MB・CC0 由来）。`index.html` では読まず、表紙のあとに `stage3d-hd.js` が裏で読む。`tools/extract-hd-assets.cjs` で作る（手で直さない） |
 | `src/js/stage2d.js` | 軽量の「絵巻モード」（`GENJI.Stage2D`。WebGL なしでも動く代役。API は 3D と同じ） |
 | `src/js/games.js` `study.js` `ui.js` `engine.js` | 遊び（並べ・結び）、原文帳・図鑑、画面、物語の進行と保存 |
 | `src/styles/*.css` | `base.css` `ui.css` `study.css`（エンジン側） / `stage3d.css`（3D 側） |
@@ -110,7 +111,7 @@ GENJI.registerChapter({
 
 ```js
 supported()                     // WebGL が使えるか（2D は常に true）
-mount(el, { quality: 'high'|'low' })   // el = #gj-stage。canvas などを中に作る
+mount(el, { quality: 'high'|'low' })   // el = #gj-stage。canvas などを中に作る（3D は 'lite' も受ける。下の「3D の画質」）
 unmount();  resize();  setQuality(q)
 setScene(sceneNode)             // stage, light, season, cast を受けて舞台を組み替える（Promise を返してもよい）
 focus(at)                       // 'wide' | 人物id | 立ち位置。なめらかに寄る
@@ -128,7 +129,9 @@ activity(kind, cfg, cb)         // 3D の遊びを始める。→ { stop() }
 - 操作のボタン（歩く・視点など）は 3D 側が `#gj-stage` の中に `gj3-` クラスで作る。文字の窓（画面の下 4 割ほど）と重ならない位置に。
 
 見せ方の方針：**吹抜屋台**（屋根と天井を外し、斜め上から室内を見下ろす絵巻の構図）を基本に、要所で人物に寄る。
-人物は**引目鉤鼻・後ろ姿・扇・御簾越し**で表し、精密な顔は作らない。装束は襲の色目で人物を見分けさせる。
+人物は 3D では解剖学的な頭部（CC0 の網目）に白粉・引眉・小さな紅・身の丈に余る垂髪を手続きで重ねた**写実寄りで品のよい顔**、
+絵巻（軽量）では引目鉤鼻。どちらも後ろ姿・扇・御簾越しを使い、装束は襲の色目で人物を見分けさせる。
+若紫などの子どもは頭身を下げて幼く清らかに作り、性的な印象を与える造形はしない。
 
 ## 学習モード
 
@@ -148,3 +151,16 @@ activity(kind, cfg, cb)         // 3D の遊びを始める。→ { stop() }
 - 3D の遊びは `GENJI.S3A[kind] = function (ctx, act, cfg, cb, finish)`（`stage3d-activities.js`）。`act.frame(dt, t)` を置くと、その間のカメラは遊び側が動かす。`act.cleanup` で後始末。終わりは `finish(result)`。
 - 遊びの補助ボタン（自動で歩く・手がかり）には `data-a3="auto"` をつける（タッチやキーボードが使いにくい生徒のための道でもあり、自動テストもこれを押す）。
 - `wataru` は `cfg.stage` が `kokyu` なら桐壺から清涼殿まで全行程、`watadono` なら途中の廊ひとつ分を歩く。
+- `kaimami` は小柴垣から一歩さがった所（垣の外）から望む。手前の柴は前ぼけ（`gj3-kaki`）として画面に掛け、部屋は垣の向こうに遠く見せる。
+
+## 3D の人物（高精細版）と画質（実装メモ）
+
+- 人物は `GENJI.S3F.make(id, opts)` が作る。`GENJI.S3H.loaded()`（頭部・手のデータが届いた）なら高精細版（`stage3d-hd.js`）、まだなら簡素な人形（`stage3d-figures.js`）。
+  どちらも `root / setPose / speak / update / headWorld / dispose` の同じ形。データが届いたら、いまの舞台の人物もその場で差し替える。
+- データは `src/js/stage3d-hd-assets.js`（約 4MB）。`stage3d-hd.js` が `window.onload` のあとに `<script>` を足して読む（`fetch` を使わないので `file://` でも動く）。
+  設定で絵巻（軽量）を選んでいる人には読まない。一枚 HTML（`dist/index.html`）では `<script type="text/plain" id="gj3-hd-data">` に埋め込み、同じく表紙のあとに実行する。
+- 画質：`high` は影・物理ベースの材質・映り込み・木目の凹凸。`low`（エンジンが小さい画面・少ないメモリで選ぶ）でも高精細の人物は使い、顔の細かい網目は寄ったときだけ、影なし・材質は軽いもの。
+  `lite`（`setQuality('lite')`、またはメモリ 2GB 以下）は簡素な人形だけ。読み込みに失敗したときも簡素な人形のまま動く。
+- 寄り（`focus(人物)`）は胸から上の構図。顔は文字の窓（下 4 割）より上に置き、手前の柱・几帳・屏風・ほかの人物に遮られない方位と高さを選ぶ（舞台が `occ` に遮る物を集める）。
+- 話し手は口（あご）が小さく動く。全員、呼吸とまばたき。
+- 確認：`node tests/stage-smoke.cjs`（実ブラウザーで全舞台・全人物 × 全姿勢・寄り・遊び・dist）。目視は `tools/stage-preview.html`（`?q=lite` で簡素な人形）。

@@ -139,3 +139,48 @@ test('原文帳と図鑑が開ける', () => {
   d.querySelector('.gj-book [data-st="zukan"]').click();
   assert.ok(d.querySelector('.gj-zk-item'), '図鑑の項目');
 });
+
+test('履歴：これまでの文・段の見出し・問いと自分の答えが残り、読み返せる', async () => {
+  const w = boot(), E = w.GENJI.Engine, d = w.document;
+  E.start('kiritsubo', 'k1');
+  for (let i = 0; i < 400 && !(E._mode() === 'ask' && ['read', 'subject', 'keigo'].includes(E._cur().k)); i++) { step(w); await tick(1); }
+  const n = E._cur();
+  d.querySelector('.gj-opt[data-i="' + n.o.findIndex((o) => !o.ok) + '"]').click();
+  d.querySelector('.gj-opt[data-i="' + n.o.findIndex((o) => o.ok) + '"]').click();
+  const log = E._state().log;
+  assert.ok(log.some((l) => l[3] === 'act'), '段の見出し');
+  assert.ok(log.some((l) => l[3] === 'q' && l[1] === n.q), '問い');
+  assert.equal(JSON.stringify(log.filter((l) => l[3] === 'a').slice(-2).map((l) => l[4])), '[0,2]', '一度目の誤り・読み直しての正解');
+  d.querySelector('[data-gj="log"]').click();
+  assert.ok(d.querySelector('.gj-modal .gj-log-q') && d.querySelector('.gj-modal .gj-log-a.ng') && d.querySelector('.gj-modal .gj-log-a.re'), '履歴の画面');
+  assert.ok(E._meta().ch.kiritsubo.stat.k1, '段ごとの読解が記録される');
+});
+
+test('古い記録（段ごとの読解・履歴の種類がない）でも、目次と続きが開ける', () => {
+  const old = { v: 1, settings: { view: '2d', big: false, instant: true, ruby: true, sound: false, classroom: true },
+    ch: { kiritsubo: { gen: { k01: 1 }, cleared: { k0: 1 }, endings: {}, missed: {}, q: 3, ok: 2, save: { ch: 'kiritsubo', node: 'k1#0', act: 'k1', meters: {}, flags: {}, q: 1, ok: 1, picks: [], log: [['', '前の文', 0]], phase: null, met: {}, hinted: {}, seed: 1 } } }, last: 'kiritsubo' };
+  const w = boot(old), E = w.GENJI.Engine, d = w.document;
+  assert.ok(d.querySelector('[data-gj="continue"]'), '続きから');
+  d.querySelector('.gj-chap[data-ch="kiritsubo"]').click();
+  assert.ok(d.querySelector('.gj-acts'), '目次');
+  E.continueSave('kiritsubo');
+  assert.equal(E._state().node, 'k1#0');
+});
+
+test('和歌は上の句・下の句の二行に組む', () => {
+  const w = boot(), U = w.GENJI.UI;
+  const s = (x) => { const r = U.wakaSplit(x); return r && r.kami.map((u) => u.b).join('') + '/' + r.shimo.map((u) => u.b).join(''); };
+  assert.equal(s('「限りとて別るる道の悲しきにいかまほしきは命なりけり」'), '限りとて別るる道の悲しきに/いかまほしきは命なりけり');
+  assert.equal(s('「{初草|はつくさ}の若葉の上を見つるより旅寝の袖も露ぞ{乾|かわ}かぬ」'), '初草の若葉の上を見つるより/旅寝の袖も露ぞ乾かぬ');
+  assert.equal(U.wakaSplit('「雀の子を犬君が逃がしつる。」'), null, '歌でない台詞は分けない');
+});
+
+test('結末：学習記録（コピー用の文）に読解率・読み・ふり返りが入る', async () => {
+  const w = boot(null, ['tests/fixtures/chapter.js']), E = w.GENJI.Engine;
+  E.start('tameshi');
+  await playToEnd(w);
+  const t = w.GENJI.UI.summaryText();
+  assert.match(t, /読解率/);
+  assert.match(t, /ふり返り/);
+  assert.ok(w.document.querySelector('.gj-end [data-gj="copy"]') && w.document.querySelector('.gj-end [data-gj="print"]'));
+});

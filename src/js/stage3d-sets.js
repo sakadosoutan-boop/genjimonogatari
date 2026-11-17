@@ -11,27 +11,44 @@
 
   function M() {
     return M.c || (M.c = {
-      ita: K.mat('#ffffff', { map: K.tex.ita() }), itaD: K.mat('#d8cdbd', { map: K.tex.ita() }), wood: K.mat(WA.ita), slab: K.mat('#8c6a48'),
-      hashira: K.mat(WA.hashira), nageshi: K.mat(WA.nageshi), kuro: K.mat(WA.kuro), shita: K.mat('#3b2d24'),
-      tatami: K.mat('#ffffff', { map: K.tex.tatami() }), ungen: K.mat('#ffffff', { map: K.tex.ungen() }), kourai: K.mat('#ffffff', { map: K.tex.kourai() }),
+      ita: K.mat('#ffffff', { map: K.tex.ita(), rough: 0.55, bump: K.tex.ita(), bumpScale: 0.006 }), itaD: K.mat('#d8cdbd', { map: K.tex.ita(), rough: 0.7, bump: K.tex.ita(), bumpScale: 0.008 }),
+      wood: K.mat('#d6b48a', { map: K.tex.hashira(), rough: 0.6 }), slab: K.mat('#a07a52', { map: K.tex.hashira(), rough: 0.8 }),
+      hashira: K.mat('#b08458', { map: K.tex.hashira(), rough: 0.55, bump: K.tex.hashira(), bumpScale: 0.004 }), nageshi: K.mat('#9a704a', { map: K.tex.hashira(), rough: 0.6 }), kuro: K.mat(WA.kuro, { rough: 0.28 }), shita: K.mat('#3b2d24'),
+      tatami: K.mat('#ffffff', { map: K.tex.tatami(), rough: 0.88, bump: K.tex.tatami(), bumpScale: 0.003 }), ungen: K.mat('#ffffff', { map: K.tex.ungen() }), kourai: K.mat('#ffffff', { map: K.tex.kourai() }),
       misu: K.mat('#ffffff', { map: K.tex.misu(), transparent: true, side: T.DoubleSide, depthWrite: false }),
       mokou: K.mat('#3d5a45'), shu: K.mat(WA.shu), kin: K.mat(WA.kin), kabe: K.mat(WA.kabe),
-      yamatoe: K.mat('#ffffff', { map: K.tex.yamatoe(), side: T.DoubleSide }), koshi: K.mat('#ffffff', { map: K.tex.koshi(), side: T.DoubleSide }),
-      hiwada: K.mat('#ffffff', { map: K.tex.hiwada() }), kinun: K.mat('#ffffff', { map: K.tex.kinun(), basic: true, transparent: true, depthWrite: false, fog: false }),
+      yamatoe: K.mat('#ffffff', { map: K.tex.yamatoe(), side: T.DoubleSide, rough: 0.5, metal: 0.12 }), koshi: K.mat('#ffffff', { map: K.tex.koshi(), side: T.DoubleSide }),
+      hiwada: K.mat('#ffffff', { map: K.tex.hiwada(), rough: 0.9, bump: K.tex.hiwada(), bumpScale: 0.02 }), kinun: K.mat('#ffffff', { map: K.tex.kinun(), basic: true, transparent: true, depthWrite: false, fog: false }),
       kasumi: K.mat('#ffffff', { map: K.tex.kasumi(), basic: true, transparent: true, depthWrite: false, opacity: 0.8, fog: false }),
       miki: K.mat(WA.miki), iwa: K.mat(WA.iwa), yuki: K.mat(WA.yuki), mizu: K.mat(WA.mizu), shiba: K.mat('#7a6146'), take: K.mat(WA.take),
       flame: K.mat('#ffd9a0', { basic: true, map: K.tex.glow(), transparent: true, depthWrite: false, add: true, fog: false })
     });
   }
-  S._reset = function () { M.c = null; };
+  S._reset = function () { M.c = null; if (CBOX) { CBOX.dispose(); CBOX = null; } };
 
   /* ---------- 小さな部品 ---------- */
   function floorTop(g, x0, z0, x1, z1, y, mat) { var w = x1 - x0, d = z1 - z0; return K.pl(g, w, d, mat || M().ita, (x0 + x1) / 2, y, (z0 + z1) / 2, w / 2.4, d / 2.4); }
   function slab(g, x0, z0, x1, z1, top, th) { K.bx(g, x1 - x0, th, z1 - z0, M().slab, (x0 + x1) / 2, top - th / 2 - 0.004, (z0 + z1) / 2); }
-  function pillar(g, x, z, h, r, y) { return K.cy(g, r || 0.1, h || PH, M().hashira, x, y || 0, z, 8); }
+  /* 寄りのカメラが避ける物（柱・几帳・屏風）。舞台を作るたびに集め直す。{ x, z, r, top } */
+  var OCC = [];
+  function occ(x, z, r, top) { OCC.push({ x: x, z: z, r: r, top: top }); }
+  function pillar(g, x, z, h, r, y) { occ(x, z, (r || 0.1) + 0.06, (y || 0) + (h || PH)); return K.cy(g, r || 0.1, h || PH, M().hashira, x, y || 0, z, K.HQ ? 16 : 8); }
+  /* 面取りした角材（長押・高欄の横木）。断面は角を落とした四角、長さ方向が x */
+  var CBOX = null;
+  function cbox() {
+    if (CBOX) return CBOX;
+    var c = 0.14, sh = new T.Shape();
+    sh.moveTo(-0.5 + c, -0.5); sh.lineTo(0.5 - c, -0.5); sh.lineTo(0.5, -0.5 + c); sh.lineTo(0.5, 0.5 - c); sh.lineTo(0.5 - c, 0.5); sh.lineTo(-0.5 + c, 0.5); sh.lineTo(-0.5, 0.5 - c); sh.lineTo(-0.5, -0.5 + c); sh.closePath();
+    var g = new T.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false });
+    g.translate(0, 0, -0.5); g.rotateY(PI / 2); g.computeVertexNormals();
+    var uv = g.attributes.uv; for (var i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 0.5, uv.getY(i) * 0.5);
+    g._gjShared = true; return (CBOX = g);
+  }
   function beam(g, x0, z0, x1, z1, y, t, mat) {
     var dx = x1 - x0, dz = z1 - z0, L = Math.sqrt(dx * dx + dz * dz);
-    return K.bx(g, L, t || 0.14, t || 0.14, mat || M().nageshi, (x0 + x1) / 2, y, (z0 + z1) / 2, -Math.atan2(dz, dx));
+    if (!K.HQ) return K.bx(g, L, t || 0.14, t || 0.14, mat || M().nageshi, (x0 + x1) / 2, y, (z0 + z1) / 2, -Math.atan2(dz, dx));
+    var m = new T.Mesh(cbox(), mat || M().nageshi); m.scale.set(L, t || 0.14, t || 0.14); m.rotation.y = -Math.atan2(dz, dx);
+    m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2); m.castShadow = true; m.receiveShadow = true; g.add(m); return m;
   }
   /* 置き畳（平安の畳は敷きつめず、座る所にだけ置く）。heri: 'kourai' | 'ungen' */
   function tatami(g, x, z, ry, heri, w, d, y) {
@@ -65,6 +82,7 @@
   function kicho(g, env, x, z, ry, style, y) {
     var st = { fuyu: ['#f6f1e6', '#b79ad0', '#b5432e'], beni: ['#f8ece2', '#c8483c', '#c9a44a'], ao: ['#f1f3ea', '#7fa58a', '#5a3d6e'], nibi: ['#e6e3dc', '#8c8a86', '#4a4640'] }[style || 'fuyu'];
     var k = K.grp(g, x, y || 0, z, ry), w = 1.3, h = 1.25;
+    occ(x - Math.cos(ry || 0) * 0.33, z + Math.sin(ry || 0) * 0.33, 0.36, (y || 0) + h); occ(x + Math.cos(ry || 0) * 0.33, z - Math.sin(ry || 0) * 0.33, 0.36, (y || 0) + h);
     K.bx(k, 0.5, 0.07, 0.22, M().kuro, 0, 0.035, 0);
     K.bx(k, 0.035, h, 0.035, M().kuro, -0.1, h / 2, 0); K.bx(k, 0.035, h, 0.035, M().kuro, 0.1, h / 2, 0);
     K.bx(k, w + 0.1, 0.035, 0.035, M().kuro, 0, h, 0);
@@ -77,6 +95,7 @@
   /* 屏風 */
   function byobu(g, x, z, ry, n, h) {
     var b = K.grp(g, x, 0, z, ry), pw = 0.62, i; n = n || 4; h = h || 1.5;
+    for (i = 0; i < n; i++) { var ox = (i - (n - 1) / 2) * pw * 0.92; occ(x + Math.cos(ry || 0) * ox, z - Math.sin(ry || 0) * ox, 0.33, h); }
     for (i = 0; i < n; i++) {
       var a = (i % 2 ? -1 : 1) * 0.42, p = K.vp(b, pw, h, M().yamatoe, (i - (n - 1) / 2) * pw * Math.cos(0.42), 0, (i % 2 ? 0 : 0) , a, 0.5, 1);
       p.castShadow = true; p.position.z = 0;
@@ -295,7 +314,7 @@
   }
 
   /* ---------- 北山の僧坊：小柴垣・西面の持仏・簾を少し上げて ---------- */
-  var FENCE_Z = 6.2;
+  var FENCE_Z = 8.4;   /* 垣は部屋から十分に離す（垣間見で、垣の向こうに部屋が遠く見えるように） */
   var FENCE = [[-8, -2.7, 1], [-2.7, -1.9, 0], [-1.9, -0.8, 1], [-0.8, 0.3, 0], [0.3, 1.0, 1], [1.0, 1.9, 0], [1.9, 2.7, 1], [2.7, 3.6, 0], [3.6, 9, 1]];   // [x0,x1,密]
   function soubou(env, opt) {
     opt = opt || {};
@@ -315,17 +334,17 @@
     tatami(g, 1.9, -1.1, -0.4, 'kourai'); kicho(g, env, 3.6, -2.6, -0.9, 'nibi'); kicho(g, env, -2.4, -2.8, 0.3, 'nibi');
     toudai(g, env, 0.9, -2.6);
     /* 手前（西面）の御簾：少し上げて。俯瞰では中が見えるよう、巻き上げた形だけ */
-    for (i = -1; i < 4; i++) misu(g, env, d.x0 + (i + 0.5) * KEN, d.fz, KEN - 0.2, 0, opt.kaimami ? (i === 1 || i === 2 || i === 0 ? 1.15 : 0.75) : 1.7);
+    for (i = -1; i < 4; i++) misu(g, env, d.x0 + (i + 0.5) * KEN, d.fz, KEN - 0.2, 0, opt.kaimami ? (i === 1 || i === 2 || i === 0 ? 1.5 : 0.95) : 1.7);
     /* 庭：山桜、小柴垣 */
     var gy = -FH, r = K.rng(61);
     tree(g, env, 'sakura', d.sx - 3.5, gy, -2.5, 1.2, 62); tree(g, env, 'sakura', 7.6, gy, 4.6, 1.0, 63); if (!opt.kaimami) tree(g, env, 'sakura', -9.5, gy, 5.2, 0.9, 64);
-    grass(g, env, -9, 4, 9, 5.8, gy, 30, 0.4);
+    grass(g, env, -9, 4, 9, FENCE_Z - 0.4, gy, 46, 0.4); rock(g, 2.6, gy, 5.6, 0.45); rock(g, -1.8, gy, 6.4, 0.32);
     FENCE.forEach(function (f) {
       var x, top = f[2] ? 1.95 : 0.95, n = 0;
       for (x = f[0]; x < f[1]; x += f[2] ? 0.075 : 0.13) {
         var h = top * (0.88 + r() * 0.16), s = K.bx(g, 0.035, h, 0.035, n++ % 3 ? m.shiba : K.mat('#8f7556'), x, gy + h / 2, FENCE_Z + (r() - 0.5) * 0.07); s.rotation.z = (r() - 0.5) * 0.12;
       }
-      beam(g, f[0], FENCE_Z + 0.05, f[1], FENCE_Z + 0.05, gy + top * 0.42, 0.05, K.mat('#9a8a5a')); if (f[2]) beam(g, f[0], FENCE_Z + 0.05, f[1], FENCE_Z + 0.05, gy + top * 0.8, 0.05, K.mat('#9a8a5a'));
+      beam(g, f[0], FENCE_Z + 0.05, f[1], FENCE_Z + 0.05, gy + top * 0.3, 0.05, K.mat('#9a8a5a')); if (f[2]) beam(g, f[0], FENCE_Z + 0.05, f[1], FENCE_Z + 0.05, gy + top * 0.62, 0.05, K.mat('#9a8a5a'));
     });
     for (var fz2 = -1.5; fz2 < FENCE_Z; fz2 += 0.1) { var hh = 1.2 * (0.85 + r() * 0.2); K.bx(g, 0.035, hh, 0.035, m.shiba, -8 + (r() - 0.5) * 0.06, gy + hh / 2, fz2); }
     /* 夕暮れの霞 */
@@ -336,7 +355,7 @@
     d.slots.sunoko = [1.6, d.fz + 0.65, 0, -0.1]; d.slots.niwa = [3.2, 4.6, PI, -FH]; d.slots.to = [d.rx - 0.5, -0.6, -PI / 2, 0];
     sl(d, 'jibutsu', jx + 1.7, jz + 0.1, -PI / 2, 0);
     sl(d, 'kaki', 0.5, FENCE_Z + 0.75, PI, -FH); sl(d, 'kakiL', -1.1, FENCE_Z + 0.8, PI - 0.2, -FH); sl(d, 'kakiR', 2.1, FENCE_Z + 0.8, PI + 0.2, -FH);
-    d.cam = { t: [-0.6, 0.3, 1.6], az: 0.36, el: 0.8, rh: 9.4, rv: 6.6 };
+    d.cam = { t: [-0.4, 0.3, 2.6], az: 0.36, el: 0.8, rh: 9.8, rv: 7.4 };
     d.fence = { z: FENCE_Z, panels: FENCE, top: gy + 1.9, low: gy + 0.98, eye: gy + 1.5 };
     d.amb = { x: 0, z: 4, r: 8, y: 6 };
     return finish(d, env);
@@ -527,9 +546,9 @@
   var BUILD = { kokyu: kokyu, kiritsubo: kiritsubo, seiryoden: seiryoden, kokiden: kokiden, watadono: watadono, sato: sato, kitayama: kitayama, soubou: soubou };
   S.STAGES = Object.keys(BUILD);
   S.build = function (stage, env, opt) {
-    env.sway = []; env.lamps = []; env.drift = [];
+    env.sway = []; env.lamps = []; env.drift = []; OCC = [];
     var d = (BUILD[stage] || BUILD.kiritsubo)(env, opt);
-    d.stage = BUILD[stage] ? stage : 'kiritsubo';
+    d.stage = BUILD[stage] ? stage : 'kiritsubo'; d.occ = OCC;
     return d;
   };
 

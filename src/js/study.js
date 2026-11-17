@@ -8,6 +8,9 @@
   var KEIGO = { sonkei: '尊敬', kenjo: '謙譲', teinei: '丁寧' };
   var CATS = [['keigo', '敬語'], ['jodoshi', '助動詞'], ['joshi', '助詞'], ['kogo', '重要古語'], ['shikitari', 'しきたり'], ['waka', '和歌']];
   var LAYERS = [['yaku', '現代語訳'], ['chu', '語注'], ['hinshi', '品詞分解'], ['keigo', '敬語']];
+  // 品詞の色分け（判定の順が大事：「補助動詞」「助動詞」は「動詞」より先に見る）
+  var POS = [['jodoshi', /助動詞/, '助動詞'], ['joshi', /助詞/, '助詞'], ['doshi', /動詞/, '動詞'], ['keiyo', /形容/, '形容詞・形容動詞'], ['meishi', /名詞/, '名詞・代名詞'], ['fuku', /副詞|連体詞|接続詞|感動詞/, '副詞など']];
+  function posOf(h) { for (var i = 0; i < POS.length; i++) if (POS[i][1].test(h || '')) return POS[i][0]; return 'other'; }
 
   var St = {
     layers: { yaku: true, chu: false, hinshi: false, keigo: false },   // 重ねている層
@@ -37,7 +40,8 @@
     if (u.nl) return '<br>';
     var k = u.r ? '<ruby>' + esc(u.b) + '<rt>' + esc(u.r) + '</rt></ruby>' : esc(u.b);
     if (u.m) k = '<em class="gj-mark">' + k + '</em>';
-    return cls ? '<span class="' + cls + '">' + k + '</span>' : k;
+    // 語注・敬語の印のついた字は、押すと説明が出る
+    return cls ? '<span class="' + cls + '"' + (/\b[cq]-\d/.test(cls) ? ' data-st="tip"' : '') + '>' + k + '</span>' : k;
   }
   function unitsHTML(us, n, cls) {
     var k = '';
@@ -78,12 +82,12 @@
   function textHTML(g, L) {
     var us = units(g.text), cls = [], i;
     function add(r, c) { if (r) for (var j = r[0]; j < r[1]; j++) cls[j] = (cls[j] ? cls[j] + ' ' : '') + c; }
-    if (L.chu) (g.chu || []).forEach(function (c) { add(findRange(us, c.w, 0), 'gj-u-chu'); });
+    if (L.chu) (g.chu || []).forEach(function (c, n) { add(findRange(us, c.w, 0), 'gj-u-chu c-' + n); });
     if (L.keigo) {
       var cur = {};
-      (g.keigo || []).forEach(function (k) {
+      (g.keigo || []).forEach(function (k, n) {
         var r = findRange(us, k.w, cur[k.w] || 0);
-        if (r) { cur[k.w] = r[1]; add(r, 'gj-u-k k-' + k.kind); }
+        if (r) { cur[k.w] = r[1]; add(r, 'gj-u-k k-' + k.kind + ' q-' + n); }
       });
     }
     var hin = L.hinshi && g.hinshi && g.hinshi.length ? findRange(us, g.hinshi.map(function (t) { return t.s; }).join(''), 0) : null;
@@ -92,7 +96,7 @@
     var k = '';
     for (i = 0; i < hin[0]; i++) k += unitHTML(us[i], cls[i]);
     k += '<span class="gj-toks">' + g.hinshi.map(function (t) {
-      return '<span class="gj-tok' + (t.k ? ' k-' + esc(t.k) : '') + '"><b>' + esc(t.s) + '</b><i>' + esc(t.h) + (t.k && t.to ? '<u>→' + esc(charOf(t.to).name) + '</u>' : '') + '</i></span>';
+      return '<span class="gj-tok p-' + posOf(t.h) + (t.k ? ' k-' + esc(t.k) : '') + '"><b>' + esc(t.s) + '</b><i>' + esc(t.h) + (t.k && t.to ? '<u>' + (KEIGO[t.k] || '') + '→' + esc(charOf(t.to).name) + '</u>' : '') + '</i></span>';
     }).join('') + '</span>';
     for (i = hin[1]; i < us.length; i++) k += unitHTML(us[i], cls[i]);
     return k;
@@ -103,10 +107,17 @@
     var has = { yaku: !!g.yaku, chu: !!(g.chu && g.chu.length), hinshi: !!(g.hinshi && g.hinshi.length), keigo: !!(g.keigo && g.keigo.length) };
     var k = '<div class="gj-gen' + (opts.compact ? ' compact' : '') + '" data-ch="' + esc(ch.id) + '" data-g="' + esc(g.id) + '"' + (opts.compact ? ' data-compact="1"' : '') + '>';
     k += '<div class="gj-gen-h"><span class="gj-tag gen">原文</span><b>' + rich(g.title) + '</b>' + (g.scope ? '<span class="gj-scope">' + esc(g.scope) + '</span>' : '') + '</div>';
-    k += '<div class="gj-layers" role="group" aria-label="重ねて読む層">' + LAYERS.map(function (l) {
-      return '<button type="button" class="gj-chip" data-st="layer" data-l="' + l[0] + '" aria-pressed="' + (L[l[0]] && has[l[0]] ? 'true' : 'false') + '"' + (has[l[0]] ? '' : ' disabled') + '>' + l[1] + '</button>';
-    }).join('') + '<button type="button" class="gj-chip sub" data-st="vert" aria-pressed="' + (vt ? 'true' : 'false') + '">縦書き</button></div>';
-    k += '<div class="gj-gen-text' + (vt ? ' gj-vt' : '') + (L.hinshi && has.hinshi ? ' hin' : '') + '" lang="ja">' + textHTML(g, L) + '</div>';
+    k += '<div class="gj-layers" role="group" aria-label="重ねて読む層"><span class="gj-layers-k" aria-hidden="true">重ねる</span>' + LAYERS.map(function (l) {
+      var on = L[l[0]] && has[l[0]];
+      return '<button type="button" class="gj-chip gj-layer l-' + l[0] + '" data-st="layer" data-l="' + l[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '"' + (has[l[0]] ? '' : ' disabled title="この段にはありません"') + '><i aria-hidden="true"></i>' + l[1] + '</button>';
+    }).join('') + '<button type="button" class="gj-chip sub gj-layer" data-st="vert" aria-pressed="' + (vt ? 'true' : 'false') + '"' + (L.hinshi && has.hinshi ? ' title="品詞分解は横書きで見せます"' : '') + '><i aria-hidden="true"></i>縦書き</button></div>';
+    // 重ねた層の凡例と、押すと出る説明の場所
+    var leg = '';
+    if (L.hinshi && has.hinshi) leg += '<span class="gj-leg-h">' + POS.map(function (p) { return '<i class="p-' + p[0] + '">' + p[2] + '</i>'; }).join('') + '</span>';
+    if (L.keigo && has.keigo) leg += '<span class="gj-legend">' + Object.keys(KEIGO).map(function (kk) { return '<span class="k-' + kk + '"><i></i>' + KEIGO[kk] + '</span>'; }).join('') + '</span>';
+    if ((L.chu && has.chu) || (L.keigo && has.keigo)) leg += '<small>' + (L.chu && has.chu ? '波線の語' : '') + (L.chu && has.chu && L.keigo && has.keigo ? '・' : '') + (L.keigo && has.keigo ? '色の帯の敬語' : '') + 'を押すと、説明が出ます。</small>';
+    if (leg) k += '<div class="gj-gen-leg">' + leg + '</div>';
+    k += '<div class="gj-gen-text' + (vt ? ' gj-vt' : '') + (L.hinshi && has.hinshi ? ' hin' : '') + '" lang="ja">' + textHTML(g, L) + '</div><div class="gj-tip" role="status" hidden></div>';
     if (L.yaku && has.yaku) k += '<div class="gj-gen-yaku"><h5>現代語訳</h5><p>' + rich(g.yaku) + '</p></div>';
     if (L.keigo && has.keigo) k += '<div class="gj-gen-keigo"><h5>敬語（誰から誰へ）</h5>' + g.keigo.map(function (x) {
       return '<div class="gj-kg"><em class="gj-u-k k-' + esc(x.kind) + '">' + rich(x.w) + '</em>' + arrowHTML(x) + (x.note ? '<p>' + rich(x.note) + '</p>' : '') + '</div>';
@@ -134,10 +145,16 @@
     var k = '<div class="gj-book"><p class="gj-book-lead">綴じた段 ' + nb + '／' + list.length + '。' + (info.all ? '授業モードでは全段を開けます。' : '物語で読んだ段から開きます。') + '層のボタンで、訳・語注・品詞・敬語を重ねて読めます。</p>';
     k += '<div class="gj-book-list" role="tablist">' + list.map(function (g, i) {
       var ok = open(g);
-      return '<button type="button" role="tab" class="gj-book-tab' + (cur && g.id === cur.id ? ' on' : '') + (info.bound[g.id] ? ' bound' : '') + '" data-st="bookgo" data-id="' + esc(g.id) + '"' + (ok ? '' : ' disabled') + ' aria-selected="' + (cur && g.id === cur.id) + '">' +
+      return '<button type="button" role="tab" class="gj-book-tab' + (cur && g.id === cur.id ? ' on' : '') + (info.bound[g.id] ? ' bound' : '') + '" data-st="bookgo" data-id="' + esc(g.id) + '"' + (ok ? '' : ' disabled') + ' aria-selected="' + (cur && g.id === cur.id) + '"' + (info.bound[g.id] ? ' title="綴じた段"' : '') + '>' +
         '<small>' + (i + 1) + '</small>' + (ok ? G.esc(G.plain(g.title)) : '（まだ読んでいない段）') + (g.scope ? '<i>' + esc(g.scope) + '</i>' : '') + '</button>';
     }).join('') + '</div>';
     k += cur ? genHTML(ch, cur) : '<p class="gj-empty">まだ綴じた段がありません。物語を読み進めると、ここに原文が綴じられます。</p>';
+    if (cur) {
+      var opened = list.filter(open), at = opened.indexOf(cur), pv = opened[at - 1], nx = opened[at + 1];
+      k += '<div class="gj-book-nav"><button type="button" class="gj-btn" data-st="bookgo" data-id="' + esc(pv ? pv.id : '') + '"' + (pv ? '' : ' disabled') + '>← 前の段</button>' +
+        '<span>' + (list.indexOf(cur) + 1) + '／' + list.length + '</span>' +
+        '<button type="button" class="gj-btn" data-st="bookgo" data-id="' + esc(nx ? nx.id : '') + '"' + (nx ? '' : ' disabled') + '>次の段 →</button></div>';
+    }
     return k + '</div>';
   }
   function openBook(chId, gid) {
@@ -153,23 +170,34 @@
     var cur = z.id && G.bunpo[z.id];
     if (cur) z.cat = cur.cat;
     if (!z.cat) z.cat = (all[0] || {}).cat;
-    var k = '<div class="gj-zukan"><div class="gj-zk-cats" role="tablist">' + CATS.map(function (c) {
+    var k = '<div class="gj-zukan">' + (cur ? '' : '<label class="gj-zk-q"><span aria-hidden="true">探す</span><input type="search" data-st="zq" value="' + esc(z.q || '') + '" placeholder="ことばで探す（例：たまふ・けり・更衣）" aria-label="図鑑をことばで探す" autocomplete="off"></label>') +
+      '<div class="gj-zk-cats" role="tablist">' + CATS.map(function (c) {
       var n = all.filter(function (b) { return b.cat === c[0]; }).length;
-      return n ? '<button type="button" role="tab" class="gj-chip' + (z.cat === c[0] ? ' on' : '') + '" aria-pressed="' + (z.cat === c[0]) + '" data-st="zcat" data-id="' + c[0] + '">' + c[1] + '<small>' + n + '</small></button>' : '';
+      return n ? '<button type="button" role="tab" class="gj-chip' + (z.cat === c[0] && !z.q ? ' on' : '') + '" aria-pressed="' + (z.cat === c[0] && !z.q) + '" data-st="zcat" data-id="' + c[0] + '">' + c[1] + '<small>' + n + '</small></button>' : '';
     }).join('') + '</div>';
     if (cur) {
       k += '<article class="gj-zk-item"><button type="button" class="gj-chip sub" data-st="zcat" data-id="' + esc(cur.cat) + '">← 一覧へ</button>' +
         '<h4>' + rich(cur.title) + (cur.yomi ? '<small>' + esc(cur.yomi) + '</small>' : '') + '</h4><p>' + rich(cur.x) + '</p>' +
         ((cur.rei || []).length ? '<div class="gj-zk-rei"><h5>用例</h5>' + cur.rei.map(function (r) { return '<div><p class="gj-zk-g" lang="ja">' + rich(r.g) + '</p><p class="gj-zk-y">' + rich(r.y) + '</p></div>'; }).join('') + '</div>' : '') + '</article>';
-    } else {
-      k += '<div class="gj-zk-list">' + all.filter(function (b) { return b.cat === z.cat; }).map(function (b) {
-        return '<button type="button" class="gj-zk-row" data-st="zukan" data-id="' + esc(b.id) + '"><b>' + rich(b.title) + '</b><span>' + esc(G.plain(b.x).slice(0, 34)) + '…</span></button>';
-      }).join('') + '</div>';
-    }
+    } else k += '<div class="gj-zk-res">' + zukanList(all) + '</div>';
     return k + '</div>';
   }
+  function zukanList(all) {
+    var z = St.zukan, q = G.plain(z.q || '').replace(/[\s　]/g, '');
+    var catName = {}; CATS.forEach(function (c) { catName[c[0]] = c[1]; });
+    var hit = q ? all.filter(function (b) { return (G.plain(b.title) + (b.yomi || '') + G.plain(b.x)).indexOf(q) >= 0; }) : all.filter(function (b) { return b.cat === z.cat; });
+    if (q && hit.length > 1) {
+      // 見出しに当たったものを先に
+      hit.sort(function (a, b) { return (G.plain(b.title).indexOf(q) >= 0) - (G.plain(a.title).indexOf(q) >= 0); });
+    }
+    if (!hit.length) return '<p class="gj-empty">「' + esc(z.q) + '」は見つかりませんでした。ひらがなや、短いことばで探してみてください。</p>';
+    return (q ? '<p class="gj-zk-n">' + hit.length + ' 件</p>' : '') + '<div class="gj-zk-list">' + hit.map(function (b) {
+      var x = G.plain(b.x);
+      return '<button type="button" class="gj-zk-row c-' + esc(b.cat) + '" data-st="zukan" data-id="' + esc(b.id) + '"><b>' + rich(b.title) + (q ? '<i>' + esc(catName[b.cat] || '') + '</i>' : '') + '</b><span>' + esc(x.length > 40 ? x.slice(0, 40) + '…' : x) + '</span></button>';
+    }).join('') + '</div>';
+  }
   function openZukan(id) {
-    St.zukan = { id: id && G.bunpo && G.bunpo[id] ? id : null, cat: St.zukan ? St.zukan.cat : null };
+    St.zukan = { id: id && G.bunpo && G.bunpo[id] ? id : null, cat: St.zukan ? St.zukan.cat : null, q: St.zukan && !id ? St.zukan.q || '' : '' };
     G.UI.modal({ id: 'zukan', title: '図鑑　ことばとしきたり', html: zukanHTML(), wide: true, push: true });
   }
 
@@ -205,15 +233,39 @@
     tmp.innerHTML = genHTML(ch, g, { compact: box.hasAttribute('data-compact') });
     box.parentNode.replaceChild(tmp.firstChild, box);
   }
+  /** 語注・敬語の印を押したとき：その語の説明を本文の下に出す。 */
+  function showTip(el) {
+    var box = el.closest('.gj-gen'); if (!box) return;
+    var ch = G.chapters[box.getAttribute('data-ch')], g = ch && findGen(ch, box.getAttribute('data-g')), tip = box.querySelector('.gj-tip');
+    if (!g || !tip) return;
+    var m = /\b([cq])-(\d+)/.exec(el.className), key = m && m[0];
+    Array.prototype.forEach.call(box.querySelectorAll('.gj-hot'), function (x) { x.classList.remove('gj-hot'); });
+    if (!m || tip.getAttribute('data-k') === key) { tip.hidden = true; tip.removeAttribute('data-k'); return; }
+    Array.prototype.forEach.call(box.querySelectorAll('.' + key), function (x) { x.classList.add('gj-hot'); });
+    var html = '';
+    if (m[1] === 'c') { var c = (g.chu || [])[+m[2]]; if (c) html = '<b>' + rich(c.w) + '</b><span>' + rich(c.x) + '</span>'; }
+    else { var q = (g.keigo || [])[+m[2]]; if (q) html = '<b class="gj-u-k k-' + esc(q.kind) + '">' + rich(q.w) + '</b>' + arrowHTML(q) + (q.note ? '<span>' + rich(q.note) + '</span>' : ''); }
+    tip.innerHTML = html + '<button type="button" class="gj-mini" data-st="tip">閉じる</button>';
+    tip.setAttribute('data-k', key);
+    tip.hidden = !html;
+    if (tip.scrollIntoView) try { tip.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+  }
   function handle(act, el) {
     var id = el.getAttribute('data-id');
     if (act === 'layer') { var l = el.getAttribute('data-l'); St.layers[l] = el.getAttribute('aria-pressed') !== 'true'; rerenderGen(el); }
     else if (act === 'vert') { St.vert = el.getAttribute('aria-pressed') !== 'true'; if (St.vert) St.layers.hinshi = false; rerenderGen(el); }
-    else if (act === 'bookgo') { St.book.g = id; G.UI.modalBody(bookHTML()); }
+    else if (act === 'bookgo') { if (!id) return; St.book.g = id; G.UI.modalBody(bookHTML()); }
+    else if (act === 'tip') showTip(el);
+    else if (act === 'zq') {
+      St.zukan.q = el.value || '';
+      var res = el.closest('.gj-zukan') && el.closest('.gj-zukan').querySelector('.gj-zk-res');
+      if (res) res.innerHTML = zukanList((G.bunpoOrder || []).map(function (b) { return G.bunpo[b]; }));
+      Array.prototype.forEach.call(document.querySelectorAll('.gj-zk-cats .gj-chip'), function (c) { var on = !St.zukan.q && c.getAttribute('data-id') === St.zukan.cat; c.classList.toggle('on', on); c.setAttribute('aria-pressed', String(on)); });
+    }
     else if (act === 'zukan') {
       if (G.UI.modalId() === 'zukan') { St.zukan.id = id; G.UI.modalBody(zukanHTML()); } else openZukan(id);
     }
-    else if (act === 'zcat') { St.zukan.id = null; St.zukan.cat = id; G.UI.modalBody(zukanHTML()); }
+    else if (act === 'zcat') { St.zukan.id = null; St.zukan.cat = id; St.zukan.q = ''; G.UI.modalBody(zukanHTML()); }
   }
 
   G.Study = {

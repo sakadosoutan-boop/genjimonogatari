@@ -128,7 +128,8 @@
     targets.forEach(function (t) { if (!has[t.id]) { cast.push({ id: t.id, at: (DEF[t.id] || {}).at, pose: (DEF[t.id] || {}).pose }); has[t.id] = 1; } });
     var set = ctx.load({ stage: 'soubou', light: node.light || 'dusk', season: node.season || 'spring', cast: cast }, { kaimami: true, noShadow: true });
     var fence = set.fence || { z: 6.2, eye: 1.2 };
-    S.fovOver = S.w / S.h < 0.8 ? 44 : 34; ctx.resize();
+    /* 垣から一歩さがった所から、望遠ぎみに。手前の小柴垣が画面に掛かり、部屋は垣の向こうに遠く見える */
+    S.fovOver = S.w / S.h < 0.8 ? 50 : 40; ctx.resize();
     ctx.fx('mist');
     var x = 0.4, tx = 0.4, pitch = 0, tp = 0, found = {}, nFound = 0, busy = true, idle = 0, dwell = 0, cur = null, autoT = null, done = false;
     /* 走り来たる女子は、ほかの人を見つけたあとで走ってくる */
@@ -137,6 +138,26 @@
     function avail(t) { return !found[t.id] && S.figs[t.id] && (t.id !== 'murasaki' || !runner || runT >= 1); }
 
     var ui = S.ui; ctx.div('gj3-vig', ui);
+    /* 目の前の柴（ピントの外れた前ぼけ）。見回すと、奥の部屋より速く横へ流れる */
+    var bok = ctx.div('gj3-kaki', ui, 'canvas'), bokW = 0;
+    function drawBok() {
+      var w = Math.max(1, S.w), h = Math.max(1, S.h * (1 - S.panel)), W = Math.round(w * 1.8), g2 = bok.getContext('2d'), rr = G.S3K.rng(83), i;
+      if (W === bokW) return; bokW = W; bok.width = Math.round(W / 2); bok.height = Math.round(h / 2); g2.scale(0.5, 0.5);
+      bok.style.width = W + 'px'; bok.style.height = h + 'px';
+      for (i = 0; i < 46; i++) {
+        var x = rr() * W, cen = Math.abs(x / W - 0.5) * 2, edge = Math.abs(((x % w) / w) - 0.5) * 2;
+        if (edge < 0.42 && rr() < 0.75) continue;                       /* 真ん中はすき間を多めに */
+        var bw = 10 + rr() * (edge > 0.7 ? 60 : 26), tilt = (rr() - 0.5) * 0.12;
+        var gr = g2.createLinearGradient(x - bw, 0, x + bw, 0);
+        gr.addColorStop(0, 'rgba(38,26,16,0)'); gr.addColorStop(0.3, 'rgba(52,36,22,.88)'); gr.addColorStop(0.7, 'rgba(70,50,30,.9)'); gr.addColorStop(1, 'rgba(38,26,16,0)');
+        g2.save(); g2.translate(x, h); g2.rotate(tilt); g2.fillStyle = gr; g2.fillRect(-bw, -h * (0.55 + rr() * 0.6), bw * 2, h * 1.2); g2.restore();
+      }
+      g2.strokeStyle = 'rgba(60,44,26,.8)'; g2.lineCap = 'round';
+      for (i = 0; i < 40; i++) {     /* 小枝 */
+        var x0 = rr() * W, y0 = h * (0.2 + rr() * 0.8), e2 = Math.abs(((x0 % w) / w) - 0.5) * 2; if (e2 < 0.5) continue;
+        g2.lineWidth = 3 + rr() * 6; g2.beginPath(); g2.moveTo(x0, y0); g2.quadraticCurveTo(x0 + (rr() - 0.5) * 120, y0 - 60 - rr() * 80, x0 + (rr() - 0.5) * 200, y0 - 120 - rr() * 120); g2.stroke();
+      }
+    }
     var ret = ctx.div('gj3-reticle', ui);
     ret.innerHTML = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"/><circle class="gj3-ring" cx="50" cy="50" r="46" stroke-dasharray="289" stroke-dashoffset="289"/></svg>';
     var ring = ret.querySelector('.gj3-ring');
@@ -173,7 +194,9 @@
         runner.root.position.lerpVectors(runFrom, runTo, runT * runT * (3 - 2 * runT));
         if (runT >= 1) runner.setPose('stand');
       }
-      var cam = S.camera, eye = fence.eye != null ? fence.eye : 1.2, cz = fence.z + 0.55;
+      drawBok();
+      bok.style.transform = 'translateX(' + (-(S.w * 0.4) - (x - 0.7) / 4.9 * S.w * 0.36).toFixed(1) + 'px)';
+      var cam = S.camera, eye = fence.eye != null ? fence.eye + 0.1 : 1.2, cz = fence.z + 1.2;
       if (autoT && S.figs[autoT.id]) {   // 手がかり：その人の頭が輪の真ん中に来る向きへ
         var hp = ctx.headOf(autoT.id, v);
         if (hp) { tx = clamp(hp.x, -4.2, 5.6); tp = clamp(((hp.y - eye) / Math.max(0.5, cz - hp.z) * 6 + 0.25) / 6, -0.3, 0.4); }
@@ -181,7 +204,7 @@
       pitch += (tp - pitch) * (1 - Math.exp(-dt * 4));
       x += (tx - x) * (1 - Math.exp(-dt * 4));
       cam.position.set(x, eye, cz);
-      cam.lookAt(x, eye - 0.25 + pitch * 6, cz - 6);
+      cam.lookAt(x, eye - 0.12 + pitch * 6, cz - 8);
       S.cam.t.set(x, 1, 0); S.cam.dist = 7;
       if (busy || done) return;
       /* 輪の中にとらえているか */

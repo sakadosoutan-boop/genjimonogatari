@@ -10,13 +10,35 @@
 
   /* 光：空（上・下）の色、日／月の色と向き、地の色（絵巻の紙色）、灯 */
   var LIGHTS = {
-    dawn:  { bg: '#ead9cf', hemi: ['#ffeee6', '#9a8a8e', 0.7], sun: ['#ffd6c0', 0.42, [-6, 7, 6]], amb: 0.1 },
-    day:   { bg: '#eadfc2', hemi: ['#fffaf0', '#b3a586', 0.74], sun: ['#fff3dc', 0.42, [5, 10, 6]], amb: 0.1 },
-    dusk:  { bg: '#e2b98e', hemi: ['#ffdcb8', '#86697a', 0.68], sun: ['#ffae6c', 0.5, [-8, 4.5, 4]], amb: 0.08, dark: 1 },
-    night: { bg: '#20263c', hemi: ['#6f7ba6', '#262637', 0.62], sun: ['#93a4d6', 0.22, [3, 9, 5]], amb: 0.06, dark: 1, lamp: 1.1 },
-    moon:  { bg: '#313c5c', hemi: ['#97a8d0', '#2e3046', 0.72], sun: ['#d3deff', 0.5, [-6, 9, 3]], amb: 0.06, dark: 1, lamp: 0.7, moon: 1 }
+    dawn:  { bg: '#ead9cf', hemi: ['#ffeee6', '#9a8a8e', 0.7], sun: ['#ffd6c0', 0.42, [-6, 7, 6]], amb: 0.1, exp: 0.8 },
+    day:   { bg: '#eadfc2', hemi: ['#fffaf0', '#b3a586', 0.74], sun: ['#fff3dc', 0.42, [5, 10, 6]], amb: 0.1, exp: 0.76 },
+    dusk:  { bg: '#e2b98e', hemi: ['#ffdcb8', '#86697a', 0.68], sun: ['#ffae6c', 0.5, [-8, 4.5, 4]], amb: 0.08, dark: 1, exp: 0.95, env: 'l' },
+    night: { bg: '#20263c', hemi: ['#6f7ba6', '#262637', 0.62], sun: ['#93a4d6', 0.22, [3, 9, 5]], amb: 0.06, dark: 1, lamp: 1.1, exp: 0.95 },
+    moon:  { bg: '#313c5c', hemi: ['#97a8d0', '#2e3046', 0.72], sun: ['#d3deff', 0.5, [-6, 9, 3]], amb: 0.06, dark: 1, lamp: 0.7, moon: 1, exp: 1.0 }
   };
   var KEIGO = { sonkei: '尊敬', kenjo: '謙譲', teinei: '丁寧' };
+  /* 映り込み用の環境（外部の HDRI は使わず、紙の色の箱に明るい窓を描いたもの。鴻門の会 koumon-lighting.js と同じ考え） */
+  var ENV = {};
+  function envMap(dark) {
+    var k = dark ? 'd' : 'l'; if (ENV[k] && ENV[k].r === S.renderer) return ENV[k].t;
+    var faces = [], i;
+    for (i = 0; i < 6; i++) {
+      var c = K.canvas(64, 64, function (g, w, h) {
+        var gr = g.createLinearGradient(0, 0, 0, h);
+        gr.addColorStop(0, dark ? '#25283a' : '#d9c9a8'); gr.addColorStop(0.6, dark ? '#14131b' : '#8a7356'); gr.addColorStop(1, dark ? '#08070a' : '#3a2c20');
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+        if (i === 2) { g.fillStyle = dark ? '#2e3248' : '#efe4cc'; g.fillRect(0, 0, w, h); }
+        if (i === 3) { g.fillStyle = dark ? '#080606' : '#4a3828'; g.fillRect(0, 0, w, h); }
+        if (i === 0 || i === 4) { g.fillStyle = dark ? 'rgba(255,170,90,.55)' : 'rgba(255,248,230,.85)'; g.fillRect(10, 8, 44, 30); }
+      });
+      faces.push(c);
+    }
+    var cube = new T.CubeTexture(faces); cube.encoding = T.sRGBEncoding; cube.needsUpdate = true;
+    var gen = new T.PMREMGenerator(S.renderer), tgt = gen.fromCubemap(cube); gen.dispose(); cube.dispose();
+    if (ENV[k]) ENV[k].t.dispose();
+    ENV[k] = { r: S.renderer, t: tgt.texture }; tgt.texture._gjShared = true;
+    return tgt.texture;
+  }
 
   function supported() {
     if (!T || !K || !K.ok || !F || !SETS || !doc) return false;
@@ -32,7 +54,9 @@
     if (S.el) unmount();
     if (!supported()) return false;
     opts = opts || {};
-    S.q = opts.quality === 'low' ? 'low' : 'high';
+    /* 画質：high（PC）／low（小さい画面・少ないメモリ。高精細の人物は軽い設定で）／lite（簡素な人形だけ） */
+    S.q = opts.quality === 'low' || opts.quality === 'lite' ? opts.quality : 'high';
+    if (S.q === 'low' && root.navigator && root.navigator.deviceMemory && root.navigator.deviceMemory <= 2) S.q = 'lite';
     if (opts.panel != null) S.panel = opts.panel;
     S.el = el;
     S.wrap = div('gj3-root', el);
@@ -41,6 +65,8 @@
       S.renderer = new T.WebGLRenderer({ canvas: S.cv, antialias: S.q === 'high', alpha: false, powerPreference: 'high-performance' });
     } catch (e) { S.sup = false; el.removeChild(S.wrap); S.el = null; return false; }
     S.renderer.outputEncoding = T.sRGBEncoding;
+    K.HQ = S.q === 'high';
+    if (K.HQ) { S.renderer.toneMapping = T.ACESFilmicToneMapping; S.renderer.toneMappingExposure = 1.2; }
     S.renderer.shadowMap.enabled = S.q === 'high'; S.renderer.shadowMap.type = T.PCFSoftShadowMap;
     S.camera = new T.PerspectiveCamera(30, 1, 0.3, 400);
     S.cam = { t: new T.Vector3(), az: 0.4, el: 0.85, dist: 20 }; S.goal = { t: new T.Vector3(), az: 0.4, el: 0.85, dist: 20 };
@@ -58,6 +84,7 @@
     S.cv.addEventListener('webglcontextrestored', function () { S.lost = false; });
     resize();
     S.running = true; S.last = 0; S.raf = root.requestAnimationFrame(frame);
+    if (G.S3H && S.q !== 'lite') { G.S3H.ready(); G.S3H.onReady(hdSwap); }
     return true;
   }
   function unmount() {
@@ -68,6 +95,7 @@
     root.removeEventListener('resize', S.onRes); doc.removeEventListener('visibilitychange', S.onVis);
     if (S.ro) S.ro.disconnect(); if (S.io) S.io.disconnect();
     K.disposeAll(); SETS._reset();
+    for (var ek in ENV) { ENV[ek].t.dispose(); } ENV = {};
     S.renderer.dispose();
     if (S.wrap.parentNode) S.wrap.parentNode.removeChild(S.wrap);
     S.el = S.wrap = S.cv = S.renderer = S.scene = S.set = S.node = null; S.figs = {}; S.order = [];
@@ -77,7 +105,7 @@
     var r = S.wrap.getBoundingClientRect();
     S.w = Math.max(1, Math.round(r.width)); S.h = Math.max(1, Math.round(r.height));
     var dpr = root.devicePixelRatio || 1;
-    S.renderer.setPixelRatio(S.q === 'high' ? Math.min(2, dpr) : Math.min(1.25, Math.max(1, dpr)));
+    S.renderer.setPixelRatio(S.q === 'high' ? Math.min(2, dpr) : Math.min(1.5, Math.max(1, dpr)));
     S.renderer.setSize(S.w, S.h, false);
     S.camera.aspect = S.w / S.h;
     S.camera.fov = S.fovOver || (S.w / S.h < 0.8 ? 38 : 30);
@@ -89,7 +117,7 @@
     if (S.act && S.act.resize) S.act.resize();
   }
   function setQuality(q) {
-    q = q === 'low' ? 'low' : 'high'; if (q === S.q) return; S.q = q;
+    q = q === 'low' || q === 'lite' ? q : 'high'; if (q === S.q) return; S.q = q;
     if (!S.el) return;
     var el = S.el, node = S.node, panel = S.panel;
     unmount(); mount(el, { quality: q, panel: panel }); if (node) setScene(node);
@@ -120,13 +148,15 @@
     sc.background = K.col(L.bg);
     sc.fog = new T.Fog(K.col(L.bg), 60, 240);
     sc.add(set.g);
-    var hemi = new T.HemisphereLight(K.col(L.hemi[0]), K.col(L.hemi[1]), L.hemi[2]); sc.add(hemi);
-    sc.add(new T.AmbientLight(0xffffff, L.amb));
+    /* 高画質では映り込みの環境が回り込む光を担うので、半球光は弱める */
+    var hemi = new T.HemisphereLight(K.col(L.hemi[0]), K.col(L.hemi[1]), L.hemi[2] * (K.HQ ? (L.dark && !L.env ? 0.4 : 0.5) : 1)); sc.add(hemi);
+    if (!K.HQ) sc.add(new T.AmbientLight(0xffffff, L.amb));
+    if (K.HQ) { sc.environment = envMap(L.env ? false : !!L.dark); S.renderer.toneMappingExposure = L.exp || 1; }
     var sun = S.sun = new T.DirectionalLight(K.col(L.sun[0]), L.sun[1]);
     sun.position.set(L.sun[2][0], L.sun[2][1], L.sun[2][2]).multiplyScalar(4);
     if (S.q === 'high' && !opt.noShadow) {
       var R = set.shadowR || 12, c = sun.shadow.camera;
-      sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+      sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
       c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 1; c.far = 160; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
     }
     sc.add(sun); sc.add(sun.target);
@@ -154,6 +184,22 @@
     return Promise.resolve();
   }
 
+  /* ---------- 高精細の人物（stage3d-hd.js）が届いたら、いまの舞台の人物を差し替える ---------- */
+  function hdSwap() {
+    if (!S.scene || S.q === 'lite' || S.act) return;
+    var k;
+    for (k in S.figs) S.figs[k] = S.figs[k].map(function (f, i) {
+      if (f.hd) return f;
+      var n = F.make(k, { variant: i, seed: f.seed, pose: f.pose, quality: S.q, far: (S.set.figScale || 1) > 1.6 || S.figs[k].length > 1 && (S.set.figScale || 1) > 1.3 });
+      if (!n.hd) return f;
+      n.root.position.copy(f.root.position); n.root.rotation.copy(f.root.rotation); n.root.scale.multiplyScalar(S.set.figScale || 1);
+      n.root.visible = f.root.visible; n.at = f.at; n.speak(k === S.speaker && i === 0);
+      S.scene.add(n.root); f.dispose();
+      return n;
+    });
+    if (S.focusAt) { var fa = S.focusAt; S.focusAt = null; focus(fa); }
+  }
+
   /* ---------- 人物 ---------- */
   var AUTO = ['naka', 'nakaL', 'nakaR', 'shimo', 'shimoL', 'shimoR', 'kamiL', 'kamiR', 'kami', 'sunoko', 'to', 'niwa', 'misu'];
   var STANDS = { sunoko: 1, niwa: 1, to: 1, kaki: 1, kakiL: 1, kakiR: 1 };
@@ -168,7 +214,7 @@
     var kind = F.kindOf(id), pose = c.pose || ((set.standing || STANDS[at]) ? 'stand' : 'sit');
     var n = F.GROUPS[id] || 1, list = [], fs = set.figScale || 1;
     for (i = 0; i < n; i++) {
-      var f = F.make(id, { variant: i, seed: i * 3.1 + S.order.length, pose: pose });
+      var f = F.make(id, { variant: i, seed: i * 3.1 + S.order.length, pose: pose, quality: S.q, lite: S.q === 'lite', far: fs > 1.6 || n > 1 && fs > 1.3 });
       f.root.scale.multiplyScalar(fs);
       var off = (i ? (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 0.95 : 0) + same * 1.15, ry = sl[2] || 0, back = i ? 0.45 : 0;
       f.root.position.set(sl[0] + (Math.cos(ry) * off - Math.sin(ry) * back) * fs, sl[3] || 0, sl[1] + (-Math.sin(ry) * off - Math.cos(ry) * back) * fs);
@@ -196,19 +242,43 @@
     if (instant) snapCam();
   }
   function snapCam() { S.cam.t.copy(S.goal.t); S.cam.az = S.goal.az; S.cam.el = S.goal.el; S.cam.dist = S.goal.dist; }
+  /* 寄りのカメラ：人物の顔が見える向きのうち、手前の柱・几帳・屏風に遮られない方位と高さを選ぶ */
+  function blocked(cx, cy, cz, tx, ty, tz, skip) {
+    var L = S.figOcc || S.set.occ || [], i, dx = tx - cx, dz = tz - cz, len2 = dx * dx + dz * dz || 1e-6;
+    for (i = 0; i < L.length; i++) {
+      var o = L[i], u = K.clamp(((o.x - cx) * dx + (o.z - cz) * dz) / len2, 0, 1);
+      if (u > 0.96) continue;                                   /* 人物のすぐ後ろの物は遮らない */
+      var px = cx + dx * u - o.x, pz = cz + dz * u - o.z, y = cy + (ty - cy) * u;
+      if (px * px + pz * pz < o.r * o.r && y < o.top) return true;
+    }
+    return false;
+  }
   function focus(at) {
     if (!S.set || S.act) return;
     var c = S.set.cam, fs = S.set.figScale || 1, fd = S.set.focusDist || 5.2;
     if (!at || at === 'wide') { S.focusAt = null; S.goal.t.set(c.t[0], c.t[1], c.t[2]); S.goal.az = c.az; S.goal.el = c.el; S.goal.dist = fitDist(c.rh, c.rv); return; }
     var narrow = S.camera.aspect < 0.8 ? 1.25 : 1;
     if (S.figs[at]) {
-      var f = S.figs[at][0], h = headOf(at, _v), ry = f.root.rotation.y, d = ry - c.az;
+      var f = S.figs[at][0], h = headOf(at, _v), ry = f.root.rotation.y, d = ry - c.az, sc = f.root.scale.x;
       while (d > PI) d -= PI * 2; while (d < -PI) d += PI * 2;
       S.focusAt = at;
-      S.goal.t.set(h.x, h.y - 0.22 * fs, h.z);
-      /* 顔が見える側へ少し回り込む。後ろ向きの人は斜め後ろ姿のまま（絵巻の後ろ姿） */
-      S.goal.az = c.az + K.clamp(Math.abs(d) < 1.9 ? d * 0.55 : -Math.sign(d) * (PI - Math.abs(d)) * 0.4, -0.75, 0.75);
-      S.goal.el = 0.66; S.goal.dist = fd * 1.25 * narrow;   // 柱に隠れにくいよう、やや上から
+      /* 顔が見える側へ回り込む。後ろ向きの人は斜め後ろ姿のまま（絵巻の後ろ姿） */
+      var pref = c.az + K.clamp(Math.abs(d) < 1.9 ? d * 0.75 : -Math.sign(d) * (PI - Math.abs(d)) * 0.4, -1.0, 1.0);
+      var close = fs < 1.6;            /* 遠景の舞台（後宮・北山）は全身の寄り */
+      var rv = close ? 0.44 * sc : 1.4 * sc, rh = rv * 1.15;
+      var dist = Math.max(close ? 1.3 : 4, fitDist(rh, rv)), ty = h.y - (close ? 0.16 : 0.5) * sc;
+      /* ほかの人物も遮る物として数える（頭の高さまで） */
+      S.figOcc = (S.set.occ || []).slice();
+      for (var k2 in S.figs) if (k2 !== at) S.figs[k2].forEach(function (o) { var hp = headOf(k2, _v2); S.figOcc.push({ x: o.root.position.x, z: o.root.position.z, r: 0.3 * o.root.scale.x, top: hp ? hp.y + 0.12 * o.root.scale.x : 1.4 }); });
+      var els = close ? [0.24, 0.36, 0.5, 0.66] : [0.42, 0.6], offs = [0, 0.18, -0.18, 0.36, -0.36, 0.55, -0.55, 0.8, -0.8], best = null, i, j;
+      for (j = 0; j < els.length && !best; j++) for (i = 0; i < offs.length; i++) {
+        var az = pref + offs[i], el = els[j], ce = Math.cos(el);
+        var cx = h.x + dist * Math.sin(az) * ce, cy = ty + dist * Math.sin(el), cz = h.z + dist * Math.cos(az) * ce;
+        if (!blocked(cx, cy, cz, h.x, h.y, h.z) && !blocked(cx, cy, cz, h.x, h.y - 0.3 * sc, h.z) && !blocked(cx, cy, cz, h.x, ty - 0.2 * sc, h.z)) { best = [az, el]; break; }
+      }
+      if (!best) best = [pref, 0.75];
+      S.figOcc = null;
+      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = dist * narrow;
     } else if (S.set.slots[at]) {
       var s = S.set.slots[at]; S.focusAt = at;
       S.goal.t.set(s[0], (s[3] || 0) + 0.6 * fs, s[1]); S.goal.az = c.az; S.goal.el = 0.5; S.goal.dist = fd * 1.5 * narrow;
@@ -225,7 +295,7 @@
   /* ---------- 粒（花びら・紅葉・雪・雨） ---------- */
   var PCOL = { petals: ['#f6cdd6', '#fbe6ea', '#f0b9c6'], leaves: ['#c2452d', '#d98a3a', '#d9ae45'], snow: ['#ffffff', '#eef2f6'] };
   function makeParticles() {
-    var n = S.q === 'low' ? 70 : 220, g = new T.BufferGeometry();
+    var n = S.q !== 'high' ? 70 : 220, g = new T.BufferGeometry();
     var P = S.parts = { n: n, pos: new Float32Array(n * 3), col: new Float32Array(n * 3), vel: new Float32Array(n * 3), life: new Float32Array(n), ph: new Float32Array(n), live: 0, rate: 0, kind: 'petals', until: 0 };
     for (var i = 0; i < n; i++) { P.pos[i * 3 + 1] = -999; P.ph[i] = Math.random() * 6.28; }
     g.setAttribute('position', new T.BufferAttribute(P.pos, 3)); g.setAttribute('color', new T.BufferAttribute(P.col, 3));
@@ -354,7 +424,7 @@
     S.t += dt; var t = S.t;
     if (S.windT > 0) S.windT -= dt;
     S.wind += ((S.windT > 0 ? 1 : 0) - S.wind) * (1 - Math.exp(-dt * 2));
-    for (k in S.figs) S.figs[k].forEach(function (f) { f.update(dt, t); });
+    for (k in S.figs) S.figs[k].forEach(function (f) { f.update(dt, t); if (f.lod) f.lod(S.camera.position); });
     var wa = 1 + S.wind * 9;
     (set.sway || []).forEach(function (s) { s.o.rotation[s.ax] = Math.sin(t * (0.8 + S.wind * 2.2) + s.ph) * s.amp * wa + (s.ax === 'x' ? S.wind * s.amp * 4 : S.wind * s.amp * 3); });
     (set.drift || []).forEach(function (d) { d.o.position.x = d.x + Math.sin(t * d.sp * 0.5 + d.x) * 2.5; d.o.material.opacity = 0.8; });

@@ -149,7 +149,7 @@ async function story(browser, name, viewport, view) {
   await p.click('[data-gj="modalback"]');
   await p.click('[data-gj="closemodal"]');
   await p.click('.gj-end [data-gj="title"]');
-  await p.click('[data-gj="settings"]');
+  await p.click('.gj-screen [data-gj="settings"]');   // 上の帯にも同じボタンがある（表紙では隠れている）
   await p.click('[data-gj="set"][data-k="big"]');
   assert.ok(await p.evaluate(() => document.documentElement.classList.contains('gj-big')), name + ': 文字を大きく');
   await p.click('[data-gj="closemodal"]');

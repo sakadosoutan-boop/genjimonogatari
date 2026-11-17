@@ -311,7 +311,13 @@
     this.mat.dispose(); if (this.root.parent) this.root.parent.remove(this.root);
   };
 
-  F.make = function (id, opts) { return new Fig(id, opts); };
+  F.POSE_TABLE = POSE; F.KIND = KIND; F.PKEYS = PKEYS;
+  /* 高精細版（stage3d-hd.js）が使えるときはそちらを作る。opts.lite で簡素な人形に固定 */
+  F.make = function (id, opts) {
+    var H = G.S3H;
+    if (H && !(opts && opts.lite) && H.loaded()) { try { return H.make(id, opts || {}); } catch (e) { root.console && console.error('[S3H] 高精細の人物を作れません', id, e); } }
+    return new Fig(id, opts);
+  };
   F.lookOf = lookOf;
   /* 立ち姿が自然な人物かどうか（既定の姿勢を決める手がかり） */
   F.kindOf = function (id) { return lookOf(id).kind; };

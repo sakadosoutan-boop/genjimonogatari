@@ -40,7 +40,8 @@
   K.mat = function (hex, o) {
     o = o || {};
     if (hex == null) hex = '#ffffff';
-    var key = [hex, o.map ? o.map.uuid : '', o.side || 0, o.opacity == null ? 1 : o.opacity, o.basic ? 'b' : 'l', o.emissive || '',
+    var std = K.HQ && !o.basic && o.std !== false;
+    var key = [hex, o.map ? o.map.uuid : '', o.side || 0, o.opacity == null ? 1 : o.opacity, o.basic ? 'b' : std ? 's' + (o.rough || '') + (o.bump ? o.bump.uuid : '') : 'l', o.emissive || '',
       o.alphaTest || 0, o.depthWrite === false ? 'n' : '', o.depthTest === false ? 't' : '', o.fog === false ? 'f' : '', o.add ? 'a' : '', o.vc ? 'v' : ''].join('|');
     if (MAT[key]) return MAT[key];
     var p = { color: K.col(hex) };
@@ -54,6 +55,13 @@
     if (o.vc) p.vertexColors = true;
     var m;
     if (o.basic) m = new T.MeshBasicMaterial(p);
+    else if (std) {
+      /* 高画質：物理ベースの材質（環境の映り込みと、木目・織り目の凹凸） */
+      if (o.emissive) p.emissive = K.col(o.emissive);
+      p.roughness = o.rough != null ? o.rough : 0.78; p.metalness = o.metal || 0;
+      if (o.bump) { p.bumpMap = o.bump; p.bumpScale = o.bumpScale || 0.004; }
+      m = new T.MeshStandardMaterial(p);
+    }
     else { if (o.emissive) p.emissive = K.col(o.emissive); m = new T.MeshLambertMaterial(p); }
     if (o.fog === false) m.fog = false;
     m._gjShared = true;
@@ -269,24 +277,49 @@
     return (TEX[name] = t);
   }
   K.tex = {
-    /* 板敷：幅広の板と木目 */
+    /* 板敷：幅広の板と、流れる木目・節。板ごとに色を変え、継ぎ目に影 */
     ita: function () {
-      return tex('ita', 256, 256, function (g, w, h) {
-        var r = K.rng(11), i;
-        g.fillStyle = '#b08658'; g.fillRect(0, 0, w, h);
-        for (i = 0; i < 4; i++) { g.fillStyle = ['#b38a5c', '#a97f52', '#b6905f', '#a57a4e'][i]; g.fillRect(0, i * 64, w, 64); }
-        g.globalAlpha = 0.16;
-        for (i = 0; i < 90; i++) { g.fillStyle = r() < 0.5 ? '#6e4a2c' : '#d9b888'; g.fillRect(r() * w, r() * h, 30 + r() * 120, 1); }
-        g.globalAlpha = 0.55; g.fillStyle = '#5a3c26';
-        for (i = 0; i < 4; i++) g.fillRect(0, i * 64, w, 2);
-        g.globalAlpha = 1;
+      return tex('ita', 512, 512, function (g, w, h) {
+        var im = g.createImageData(w, h), d = im.data, r = K.rng(11), x, y, P = 4, ph = [], tone = [];
+        for (var p = 0; p < P; p++) { ph.push(r() * 100); tone.push(0.9 + r() * 0.2); }
+        for (y = 0; y < h; y++) {
+          var p2 = Math.floor(y / (h / P)), ly = y - p2 * h / P, seam = ly < 2 || ly > h / P - 2;
+          for (x = 0; x < w; x++) {
+            var q = ph[p2], n = Math.sin(x * 0.006 + q) * 9 + Math.sin(x * 0.021 + q * 2) * 3 + Math.sin(x * 0.0017 + q) * 14;
+            var gr = Math.sin((ly + n) * 0.42 + Math.sin(x * 0.011 + q) * 2.2), gr2 = Math.sin((ly * 3.1 + n * 2) * 0.5);
+            var k = 0.5 + 0.5 * gr; k = k * k * k * 0.55 + (0.5 + 0.5 * gr2) * 0.1;
+            var kn = Math.exp(-(Math.pow((x - (q * 37 % w)), 2) / 300 + Math.pow(ly - 64, 2) / 120));
+            var t = tone[p2], R = (184 - 64 * k - 60 * kn) * t, G = (140 - 52 * k - 50 * kn) * t, B = (96 - 38 * k - 36 * kn) * t;
+            if (seam) { R *= 0.45; G *= 0.42; B *= 0.4; }
+            var i = (y * w + x) * 4; d[i] = R; d[i + 1] = G; d[i + 2] = B; d[i + 3] = 255;
+          }
+        }
+        g.putImageData(im, 0, 0);
       });
     },
-    /* 畳：藺草の目 */
+    /* 柱・長押：縦の柾目 */
+    hashira: function () {
+      return tex('hashira', 128, 256, function (g, w, h) {
+        var im = g.createImageData(w, h), d = im.data, x, y;
+        for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+          var n = Math.sin(y * 0.03) * 4 + Math.sin(y * 0.11 + x * 0.05) * 1.5, k = 0.5 + 0.5 * Math.sin((x + n) * 0.9 + Math.sin(x * 0.23) * 2);
+          k = k * k; var i = (y * w + x) * 4;
+          d[i] = 128 - 40 * k; d[i + 1] = 92 - 30 * k; d[i + 2] = 62 - 22 * k; d[i + 3] = 255;
+        }
+        g.putImageData(im, 0, 0);
+      });
+    },
+    /* 畳：藺草の目（細い横筋の明暗）と、縦の織り糸 */
     tatami: function () {
-      return tex('tatami', 64, 64, function (g, w, h) {
-        g.fillStyle = '#b9b276'; g.fillRect(0, 0, w, h);
-        for (var i = 0; i < h; i += 2) { g.fillStyle = i % 4 ? 'rgba(120,118,60,.35)' : 'rgba(222,216,160,.3)'; g.fillRect(0, i, w, 1); }
+      return tex('tatami', 256, 256, function (g, w, h) {
+        var r = K.rng(23), y, x;
+        g.fillStyle = '#bdb57a'; g.fillRect(0, 0, w, h);
+        for (y = 0; y < h; y += 3) {
+          var v = r(); g.fillStyle = 'rgba(' + (200 + v * 40 | 0) + ',' + (196 + v * 34 | 0) + ',' + (130 + v * 30 | 0) + ',.55)'; g.fillRect(0, y, w, 2);
+          g.fillStyle = 'rgba(96,92,44,.32)'; g.fillRect(0, y + 2, w, 1);
+        }
+        for (x = 0; x < w; x += 16) { g.fillStyle = 'rgba(90,84,40,.18)'; g.fillRect(x, 0, 1, h); }
+        g.globalAlpha = 0.06; for (var i = 0; i < 40; i++) { g.fillStyle = r() < 0.5 ? '#6f6a2e' : '#e8e2b0'; g.fillRect(0, r() * h, w, 1 + r() * 3); } g.globalAlpha = 1;
       });
     },
     /* 繧繝縁（帝・院の畳の縁）と高麗縁 */
@@ -303,20 +336,29 @@
         for (var i = 0; i < 4; i++) { g.beginPath(); g.arc(8 + i * 16, 8, 4.2, 0, PI * 2); g.fill(); g.clearRect(6 + i * 16, 6, 4, 4); g.fillStyle = '#efe8d8'; g.fillRect(6 + i * 16, 6, 4, 4); g.fillStyle = '#2a2420'; }
       });
     },
-    /* 御簾：細い竹ひごと編み糸。すき間は透ける */
+    /* 御簾：細い竹ひご（艶と節）と、二本ずつの編み糸。ひごの間は透ける */
     misu: function () {
-      return tex('misu', 64, 64, function (g, w, h) {
+      return tex('misu', 128, 128, function (g, w, h) {
         g.clearRect(0, 0, w, h);
-        for (var y = 0; y < h; y += 4) { g.fillStyle = y % 8 ? 'rgba(206,188,112,.96)' : 'rgba(188,170,98,.96)'; g.fillRect(0, y, w, 3); g.fillStyle = 'rgba(120,104,60,.42)'; g.fillRect(0, y + 3, w, 1); }
-        g.fillStyle = 'rgba(92,70,40,.75)'; g.fillRect(15, 0, 2, h); g.fillRect(47, 0, 2, h);
+        var r = K.rng(9);
+        for (var y = 0; y < h; y += 4) {
+          var gr = g.createLinearGradient(0, y, 0, y + 3); gr.addColorStop(0, 'rgba(232,214,140,.97)'); gr.addColorStop(0.5, 'rgba(204,184,108,.97)'); gr.addColorStop(1, 'rgba(150,128,70,.97)');
+          g.fillStyle = gr; g.fillRect(0, y, w, 3);
+          g.fillStyle = 'rgba(120,96,50,.5)'; g.fillRect((r() * w) | 0, y, 2, 3);
+        }
+        g.fillStyle = 'rgba(70,52,30,.85)'; [28, 31, 92, 95].forEach(function (x) { g.fillRect(x, 0, 2, h); });
       });
     },
-    /* 檜皮葺：薄い皮を重ねた横の筋 */
+    /* 檜皮葺：薄い皮を重ねた段と、細かな繊維 */
     hiwada: function () {
-      return tex('hiwada', 64, 64, function (g, w, h) {
-        g.fillStyle = '#51402f'; g.fillRect(0, 0, w, h);
-        var r = K.rng(5);
-        for (var y = 0; y < h; y += 4) { g.fillStyle = 'rgba(30,22,16,' + (0.25 + r() * 0.25) + ')'; g.fillRect(0, y, w, 1); g.fillStyle = 'rgba(140,112,84,.16)'; g.fillRect(0, y + 2, w, 1); }
+      return tex('hiwada', 128, 128, function (g, w, h) {
+        g.fillStyle = '#4e3d2d'; g.fillRect(0, 0, w, h);
+        var r = K.rng(5), y, i;
+        for (y = 0; y < h; y += 8) {
+          var gr = g.createLinearGradient(0, y, 0, y + 8); gr.addColorStop(0, '#6a5440'); gr.addColorStop(0.8, '#4a3a2a'); gr.addColorStop(1, '#2a2018');
+          g.fillStyle = gr; g.fillRect(0, y, w, 8);
+          for (i = 0; i < 30; i++) { g.fillStyle = 'rgba(' + (r() < 0.5 ? '30,22,16' : '140,112,84') + ',.25)'; g.fillRect(r() * w, y + r() * 7, 6 + r() * 20, 1); }
+        }
       });
     },
     /* 蔀・格子 */
@@ -326,30 +368,49 @@
         for (var i = 0; i < 4; i++) { g.fillRect(i * 16, 0, 3, h); g.fillRect(0, i * 16, w, 3); }
       });
     },
-    /* やまと絵の障子・屏風：金地に緑青の山、群青の水、白い霞 */
+    /* やまと絵の障子・屏風：金箔の地（切箔の粒）に、緑青のなだらかな山・群青の水と白い波・松・すやり霞。墨の輪郭 */
     yamatoe: function () {
-      return tex('yamatoe', 256, 128, function (g, w, h) {
-        var r = K.rng(31), i;
-        g.fillStyle = '#d9c284'; g.fillRect(0, 0, w, h);
-        g.fillStyle = '#6f93a0'; g.beginPath(); g.moveTo(0, h); g.bezierCurveTo(60, h - 34, 130, h - 8, w, h - 30); g.lineTo(w, h); g.fill();
-        for (i = 0; i < 5; i++) {
-          var x = i * 56 + r() * 20, hh = 38 + r() * 34;
-          g.fillStyle = i % 2 ? '#5e8f76' : '#7da07a'; g.beginPath(); g.moveTo(x - 46, h - 16); g.quadraticCurveTo(x, h - 16 - hh * 2, x + 46, h - 16); g.fill();
+      return tex('yamatoe', 1024, 512, function (g, w, h) {
+        var r = K.rng(31), i, j;
+        var gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#e2cc8c'); gr.addColorStop(1, '#cfb06a'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+        for (i = 0; i < 900; i++) { g.fillStyle = 'rgba(' + (240 + r() * 15 | 0) + ',' + (214 + r() * 30 | 0) + ',' + (120 + r() * 40 | 0) + ',' + (0.25 + r() * 0.4) + ')'; var s2 = 2 + r() * 7; g.fillRect(r() * w, r() * h, s2, s2 * (0.6 + r())); }
+        /* 水と波 */
+        g.fillStyle = '#5b7f93'; g.beginPath(); g.moveTo(0, h); g.bezierCurveTo(240, h - 120, 520, h - 30, w, h - 110); g.lineTo(w, h); g.fill();
+        g.strokeStyle = 'rgba(240,236,220,.85)'; g.lineWidth = 2;
+        for (i = 0; i < 26; i++) { var wx = r() * w, wy = h - 20 - r() * 70; g.beginPath(); g.arc(wx, wy, 9 + r() * 6, PI * 1.1, PI * 1.9); g.stroke(); g.beginPath(); g.arc(wx + 16, wy + 4, 7, PI * 1.1, PI * 1.9); g.stroke(); }
+        /* 山（緑青の濃淡と墨の輪郭） */
+        for (i = 0; i < 7; i++) {
+          var x = i * 150 + r() * 60, hh = 90 + r() * 120, base = h - 70 - r() * 30;
+          var mg = g.createLinearGradient(0, base - hh * 1.6, 0, base); mg.addColorStop(0, i % 2 ? '#3f7a5e' : '#5f8f6a'); mg.addColorStop(1, i % 2 ? '#86ab7e' : '#a7bf8a');
+          g.fillStyle = mg; g.beginPath(); g.moveTo(x - 160, base); g.bezierCurveTo(x - 70, base - hh * 0.9, x - 30, base - hh * 1.5, x, base - hh * 1.45); g.bezierCurveTo(x + 40, base - hh * 1.4, x + 90, base - hh * 0.8, x + 170, base); g.fill();
+          g.strokeStyle = 'rgba(50,40,30,.55)'; g.lineWidth = 2; g.stroke();
+          for (j = 0; j < 14; j++) { g.fillStyle = 'rgba(40,70,48,.55)'; g.beginPath(); g.arc(x - 60 + r() * 120, base - r() * hh, 2 + r() * 2, 0, PI * 2); g.fill(); }
         }
-        g.fillStyle = 'rgba(245,238,220,.9)';
-        for (i = 0; i < 4; i++) { var cx = r() * w, cy = 14 + r() * 50; g.beginPath(); g.ellipse(cx, cy, 40 + r() * 30, 6, 0, 0, PI * 2); g.fill(); }
-        g.fillStyle = '#3f5a3c'; for (i = 0; i < 14; i++) { g.beginPath(); g.arc(r() * w, h - 28 - r() * 40, 3.5, 0, PI * 2); g.fill(); }
-        g.fillStyle = '#3a2c20'; g.fillRect(0, 0, w, 3); g.fillRect(0, h - 3, w, 3); g.fillRect(0, 0, 2, h); g.fillRect(127, 0, 2, h); g.fillRect(w - 2, 0, 2, h);
+        /* 松 */
+        for (i = 0; i < 5; i++) {
+          var px = 80 + r() * (w - 160), py = h - 120 - r() * 120;
+          g.strokeStyle = '#4a3626'; g.lineWidth = 5; g.beginPath(); g.moveTo(px, py + 70); g.bezierCurveTo(px - 10, py + 40, px + 14, py + 20, px, py); g.stroke();
+          for (j = 0; j < 5; j++) { g.fillStyle = j % 2 ? '#2f5a3a' : '#3d6b47'; g.beginPath(); g.ellipse(px + (r() - 0.5) * 60, py + (r() - 0.3) * 40, 22 + r() * 12, 9 + r() * 5, (r() - 0.5) * 0.4, 0, PI * 2); g.fill(); }
+        }
+        /* すやり霞（金の雲）：輪郭をとった横長の帯 */
+        for (i = 0; i < 6; i++) {
+          var cx = r() * w, cy = 40 + r() * 220, bw = 150 + r() * 160, bh = 16 + r() * 10;
+          g.fillStyle = 'rgba(240,222,150,.95)'; g.strokeStyle = 'rgba(150,110,40,.6)'; g.lineWidth = 1.5;
+          g.beginPath(); g.moveTo(cx - bw + bh, cy - bh); g.lineTo(cx + bw - bh, cy - bh); g.arc(cx + bw - bh, cy, bh, -PI / 2, PI / 2); g.lineTo(cx - bw + bh, cy + bh); g.arc(cx - bw + bh, cy, bh, PI / 2, PI * 1.5); g.fill(); g.stroke();
+        }
+        g.fillStyle = '#3a2c20'; g.fillRect(0, 0, w, 6); g.fillRect(0, h - 6, w, 6); g.fillRect(0, 0, 4, h); g.fillRect(w / 2 - 2, 0, 4, h); g.fillRect(w - 4, 0, 4, h);
       }, false);
     },
-    /* 几帳の帷：白から裾濃（すそご）へ。野筋の紐 */
+    /* 几帳の帷：白から裾濃（すそご）へ。朽木形の文様をうすく、野筋の紐 */
     katabira: function (name, top, bottom, suji) {
-      return tex('kata_' + name, 32, 128, function (g, w, h) {
-        var gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, top); gr.addColorStop(0.45, top); gr.addColorStop(1, bottom);
+      return tex('kata_' + name, 64, 256, function (g, w, h) {
+        var gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, top); gr.addColorStop(0.42, top); gr.addColorStop(1, bottom);
         g.fillStyle = gr; g.fillRect(0, 0, w, h);
-        g.fillStyle = 'rgba(255,255,255,.22)'; for (var i = 0; i < 6; i++) { g.beginPath(); g.ellipse(8 + (i % 2) * 16, 58 + i * 12, 9, 4, 0.4, 0, PI * 2); g.fill(); }
-        g.fillStyle = suji; g.fillRect(14, 0, 4, h);
-        g.fillStyle = 'rgba(60,40,30,.25)'; g.fillRect(0, 0, 1, h); g.fillRect(w - 1, 0, 1, h);
+        g.strokeStyle = 'rgba(90,70,60,.16)'; g.lineWidth = 2;
+        for (var i = 0; i < 9; i++) { var y = 14 + i * 27; g.beginPath(); g.moveTo(4, y); g.bezierCurveTo(18, y - 10, 30, y + 12, 44, y - 2); g.bezierCurveTo(52, y - 8, 58, y + 4, 62, y); g.stroke(); }
+        g.fillStyle = 'rgba(255,255,255,.12)'; for (i = 0; i < 64; i += 2) g.fillRect(i, 0, 1, h);
+        g.fillStyle = suji; g.fillRect(28, 0, 8, h);
+        g.fillStyle = 'rgba(60,40,30,.3)'; g.fillRect(0, 0, 1, h); g.fillRect(w - 1, 0, 1, h);
       }, false);
     },
     /* 金雲（すやり霞）：横に長く、端が丸い帯を重ねる */
