@@ -1,0 +1,4 @@
+file,role,source,source_url,sha256,license,modification,generator
+src/js/stage3d-hd-assets.js#heads.lady|woman|ama|girl,平安の女性・子どもの頭（網目・肌の画像）,Blender Studio Human Base Meshes v1.2.0 / GEO-body_female_realistic（多重解像度0・1段の頭と首）と眼球の位置,https://download.blender.org/demo/asset-bundles/human-base-meshes/human-base-meshes-bundle-v1.2.0.zip,b7421350cbad8425dd1ba93c4248867a1c236cc8a3a3dc140d4c2a03144c4bad,CC0-1.0,正準座標への移動・首での切り出し・左右対称化・可愛さ／年齢への手続きの変形・UVのまとめ直し・手続きの塗り（肌・頬・唇・眉・目のふち・AO）,tools/build-heian-heads.py
+src/js/stage3d-hd-assets.js#tex.iris|tex.lash,虹彩・まつ毛の画像,手続きで描画（素材なし）,,,CC0-1.0（本作）,—,tools/build-heian-heads.py
+src/js/stage3d-hd-assets.js#heads.female|young|adult|elder・hands,鴻門の会の頭（虞美人・張良・陳平・范増）と手,Blender Studio Human Base Meshes v1.2.0（姉妹作「鴻門の会」MIT が整えたもの。記録は同作の docs/assets/manifest.csv）,https://download.blender.org/demo/asset-bundles/human-base-meshes/human-base-meshes-bundle-v1.2.0.zip,,CC0-1.0,鴻門の会側の調整のまま抜き出し,tools/extract-hd-assets.cjs

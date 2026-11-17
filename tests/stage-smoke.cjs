@@ -4,6 +4,7 @@
 //   - 8 つの舞台 × 光で描け、真っ白・真っ黒にならない。コンソールのエラーが 0
 //   - 全人物 × stage-spec.js の全姿勢を高精細版で作れる。寄り（focus）で顔が文字の窓（下 4 割）より上に来る
 //   - 画質 lite では簡素な人形のまま。遊び（wataru・kaimami）が最後まで進む
+//   - 女性・子どもは新しい頭（lady / woman / ama / girl。tools/build-heian-heads.py）で、肌の画像・まつ毛・まぶたの開き角がそろう。データは 8MB 以下
 //   - 一枚 HTML（dist/index.html）でも、埋め込んだデータから高精細の人物を作れる
 // QUICK=1 で舞台と姿勢の組み合わせを減らす。
 const path = require('node:path');
@@ -83,6 +84,33 @@ async function figures(browser, viewport, label) {
   console.log('✔ ' + label + '：全人物 × 全姿勢・寄り（' + ids.length + ' 人）');
 }
 
+async function heian(browser) {
+  const fs = require('node:fs');
+  const mb = fs.statSync(path.join(root, 'src/js/stage3d-hd-assets.js')).size / 1048576;
+  assert.ok(mb < 8, '裏読み込みのデータは 8MB 以下（' + mb.toFixed(2) + ' MB）');
+  const { p, errors } = await open(browser, { width: 1280, height: 800 }, 'stage=kiritsubo&bare=1&cast=koui:kami');
+  await hdReady(p);
+  const WANT = { koui: 'lady', fujitsubo: 'lady', kokiden: 'lady', nyobo: 'lady', haha: 'woman', shonagon: 'woman', amagimi: 'ama', murasaki: 'girl', inuki: 'girl', wakamiya: 'girl', ichinomiya: 'girl' };
+  for (const id of Object.keys(WANT)) {
+    await p.evaluate((id) => { const St = window.GENJI.Stage3D; St.setScene({ stage: 'kiritsubo', light: 'day', cast: [{ id: id, at: 'naka' }] }); St.focus(id); }, id);
+    await p.waitForFunction((id) => { const f = window.GENJI.Stage3D._state.figs[id][0]; let ok = true; f.root.traverse((o) => { const im = o.isMesh && o.material && o.material.map && o.material.map.image; if (im && im.tagName === 'IMG' && !im.complete) ok = false; }); return ok; }, id, { timeout: 20000 });
+    const r = await p.evaluate((id) => {
+      const S = window.GENJI.Stage3D._state, f = S.figs[id][0];
+      for (let i = 0; i < 40; i++) f.update(0.05, i * 0.05);
+      const h = f.head, skin = h.skin, lash = h.lids.filter((l) => l.children.length).length;
+      return { role: f.headLook.role, uv: !!skin.geometry.attributes.uv, map: !!(skin.material.map && skin.material.map.image && skin.material.map.image.width >= 512), lids: h.lids.length, lash, open: h.open, sd: window.GENJI.Stage3D._probe().sd };
+    }, id);
+    assert.equal(r.role, WANT[id], id + ': 頭は ' + WANT[id]);
+    assert.ok(r.uv && r.map, id + ': 肌の画像（UV つき）');
+    assert.equal(r.lids, 2, id + ': まぶた 2 つ'); assert.equal(r.lash, 2, id + ': まつ毛 2 つ');
+    assert.ok(r.open < -0.2 && r.open > -0.8, id + ': まぶたの開き角（' + r.open + '）');
+    assert.ok(r.sd > 6, id + ': 絵が単色でない');
+  }
+  assert.deepEqual(errors, [], '新しい頭: エラーなし');
+  await p.close();
+  console.log('✔ 女性・子どもの新しい頭（' + Object.keys(WANT).length + ' 人。データ ' + mb.toFixed(2) + ' MB）');
+}
+
 async function lite(browser) {
   const { p, errors } = await open(browser, { width: 1280, height: 800 }, 'stage=soubou&bare=1&q=lite');
   await p.waitForTimeout(2500);
@@ -132,6 +160,7 @@ async function dist(browser) {
   const browser = await chromium.launch();
   try {
     await stages(browser);
+    await heian(browser);
     await figures(browser, { width: 1280, height: 800 }, 'PC 1280×800');
     await figures(browser, { width: 390, height: 844 }, 'スマホ縦 390×844');
     await lite(browser);

@@ -15,7 +15,9 @@
  *   - 法線は持たない（読み込んだ側で computeVertexNormals する）。
  *   - 男の頭 3 つは同じ網目（頂点の並び）なので、三角形の並び（index）を 1 つだけ持つ（ryo のもの）。
  *   - 髪の網目は持たない（髪は頭皮の形から手続きで作る）。眉は男の分だけ。
- *   - 手は鴻門の会の KM_HAND_ASSETS をそのまま（low / high、11 の形）。 */
+ *   - 手は鴻門の会の KM_HAND_ASSETS をそのまま（low / high、11 の形）。
+ * 平安の女性・子どもの頭（lady / woman / ama / girl。tools/build-heian-heads.py が Blender で作って同じファイルへ書き込む）は、
+ * いまのファイルにあればそのまま引き継ぐ（heads の from === 'heian'、indices の hf_*、uvs、tex、heian）。 */
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -62,7 +64,19 @@ for (const role in PICK) {
   }
   out.heads[role] = head;
 }
-const body = '/* 自動生成: tools/extract-hd-assets.cjs（手で直さない）。\n * 頭部・手の網目は Blender Studio「Human Base Meshes v1.2.0」（CC0）由来。姉妹作「鴻門の会」（MIT）の調整を経たもの。\n * 読み込みは stage3d-hd.js が表紙のあとに裏で行う。 */\nwindow.GJ3_HD_ASSETS=' + JSON.stringify(out) + ';\n';
+/* 平安の頭を引き継ぐ */
+const file0 = path.join(root, 'src/js/stage3d-hd-assets.js');
+if (fs.existsSync(file0)) {
+  const ctx2 = { window: {} }; vm.createContext(ctx2);
+  try { vm.runInContext(fs.readFileSync(file0, 'utf8'), ctx2); } catch (e) { ctx2.window = {}; }
+  const old = ctx2.window.GJ3_HD_ASSETS;
+  if (old && old.heads) {
+    for (const k in old.heads) if (old.heads[k].from === 'heian') out.heads[k] = old.heads[k];
+    for (const k in old.indices || {}) if (k.startsWith('hf_')) out.indices[k] = old.indices[k];
+    if (old.uvs) out.uvs = old.uvs; if (old.tex) out.tex = old.tex; if (old.heian) out.heian = old.heian;
+  }
+}
+const body = '/* 自動生成: tools/extract-hd-assets.cjs（手で直さない）。\n * 頭部・手の網目は Blender Studio「Human Base Meshes v1.2.0」（CC0）由来。姉妹作「鴻門の会」（MIT）の調整を経たもの。\n * 平安の女性・子どもの頭（heads.lady/woman/ama/girl）は tools/build-heian-heads.py が同じ素材から作って書き足す。\n * 読み込みは stage3d-hd.js が表紙のあとに裏で行う。 */\nwindow.GJ3_HD_ASSETS=' + JSON.stringify(out) + ';\n';
 const file = path.join(root, 'src/js/stage3d-hd-assets.js');
 fs.writeFileSync(file, body);
 console.log('✔ ' + path.relative(root, file) + '  ' + (Buffer.byteLength(body) / 1048576).toFixed(2) + ' MB  （頭: ' + Object.keys(out.heads).join(', ') + '、index ' + Object.keys(out.indices).length + ' 本）');

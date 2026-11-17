@@ -20,7 +20,7 @@
 | `src/data/bunpo.js` | 文法・敬語・古語の図鑑（共通） |
 | `src/data/kiritsubo.js` / `wakamurasaki.js` | 帖のデータ（物語ノード・原文帳・結末） |
 | `src/js/stage3d-kit.js` `stage3d-figures.js` `stage3d-hd.js` `stage3d-sets.js` `stage3d-activities.js` `stage3d.js` | 3D 舞台（`GENJI.Stage3D`）。`stage3d-hd.js` は高精細の人物（`GENJI.S3H`） |
-| `src/js/stage3d-hd-assets.js` | 高精細の人物の頭部・手の網目（約 4MB・CC0 由来）。`index.html` では読まず、表紙のあとに `stage3d-hd.js` が裏で読む。`tools/extract-hd-assets.cjs` で作る（手で直さない） |
+| `src/js/stage3d-hd-assets.js` | 高精細の人物の頭部・手の網目と、女性・子どもの頭の肌の画像（約 5MB・CC0 由来）。`index.html` では読まず、表紙のあとに `stage3d-hd.js` が裏で読む。男の頭・手は `tools/extract-hd-assets.cjs`（鴻門の会から）、女性・子どもの頭は `tools/build-heian-heads.py`（Blender）で作る（手で直さない） |
 | `src/js/stage2d.js` | 軽量の「絵巻モード」（`GENJI.Stage2D`。WebGL なしでも動く代役。API は 3D と同じ） |
 | `src/js/games.js` `study.js` `ui.js` `engine.js` | 遊び（並べ・結び）、原文帳・図鑑、画面、物語の進行と保存 |
 | `src/styles/*.css` | `base.css` `ui.css` `study.css`（エンジン側） / `stage3d.css`（3D 側） |
@@ -129,8 +129,9 @@ activity(kind, cfg, cb)         // 3D の遊びを始める。→ { stop() }
 - 操作のボタン（歩く・視点など）は 3D 側が `#gj-stage` の中に `gj3-` クラスで作る。文字の窓（画面の下 4 割ほど）と重ならない位置に。
 
 見せ方の方針：**吹抜屋台**（屋根と天井を外し、斜め上から室内を見下ろす絵巻の構図）を基本に、要所で人物に寄る。
-人物は 3D では解剖学的な頭部（CC0 の網目）に白粉・引眉・小さな紅・身の丈に余る垂髪を手続きで重ねた**写実寄りで品のよい顔**、
-絵巻（軽量）では引目鉤鼻。どちらも後ろ姿・扇・御簾越しを使い、装束は襲の色目で人物を見分けさせる。
+人物は 3D では解剖学的な頭部（CC0 の網目）に装束・身の丈に余る垂髪を手続きで重ねた**写実寄りの顔**。
+若い女性は白粉・引眉の再現ではなく、**脚色して可愛く**（明るい自然な肌と頬のほのかな赤み、澄んだ黒褐色の瞳、ふんわりした眉、自然な紅、頬にかかる鬢削ぎ）。
+大人の女性・尼君は同じ系統で年相応に、男は写実寄りで品よく。絵巻（軽量）では引目鉤鼻。どちらも後ろ姿・扇・御簾越しを使い、装束は襲の色目で人物を見分けさせる。
 若紫などの子どもは頭身を下げて幼く清らかに作り、性的な印象を与える造形はしない。
 
 ## 学習モード
@@ -157,10 +158,14 @@ activity(kind, cfg, cb)         // 3D の遊びを始める。→ { stop() }
 
 - 人物は `GENJI.S3F.make(id, opts)` が作る。`GENJI.S3H.loaded()`（頭部・手のデータが届いた）なら高精細版（`stage3d-hd.js`）、まだなら簡素な人形（`stage3d-figures.js`）。
   どちらも `root / setPose / speak / update / headWorld / dispose` の同じ形。データが届いたら、いまの舞台の人物もその場で差し替える。
-- データは `src/js/stage3d-hd-assets.js`（約 4MB）。`stage3d-hd.js` が `window.onload` のあとに `<script>` を足して読む（`fetch` を使わないので `file://` でも動く）。
+- データは `src/js/stage3d-hd-assets.js`（約 5MB。上限 8MB）。`stage3d-hd.js` が `window.onload` のあとに `<script>` を足して読む（`fetch` を使わないので `file://` でも動く）。
   設定で絵巻（軽量）を選んでいる人には読まない。一枚 HTML（`dist/index.html`）では `<script type="text/plain" id="gj3-hd-data">` に埋め込み、同じく表紙のあとに実行する。
 - 画質：`high` は影・物理ベースの材質・映り込み・木目の凹凸。`low`（エンジンが小さい画面・少ないメモリで選ぶ）でも高精細の人物は使い、顔の細かい網目は寄ったときだけ、影なし・材質は軽いもの。
   `lite`（`setQuality('lite')`、またはメモリ 2GB 以下）は簡素な人形だけ。読み込みに失敗したときも簡素な人形のまま動く。
 - 寄り（`focus(人物)`）は胸から上の構図。顔は文字の窓（下 4 割）より上に置き、手前の柱・几帳・屏風・ほかの人物に遮られない方位と高さを選ぶ（舞台が `occ` に遮る物を集める）。
 - 話し手は口（あご）が小さく動く。全員、呼吸とまばたき。
+- 女性・子どもの頭（`heads.lady` 若い女性 / `woman` 大人の女性 / `ama` 尼君 / `girl` 少女・子ども）は `tools/build-heian-heads.py`（Blender）が作る。
+  4 体は同じ網目なので、三角形の並び（`indices.hf_high/hf_low`）と UV（`uvs.hf_high/hf_low`）は共有し、頭ごとに位置と肌の画像（`tex.high` 1024 / `tex.low` 512、JPEG の data URI）を持つ。
+  虹彩・まつ毛の画像は `tex.iris` / `tex.lash`。目印 `anchors` に眼球の中心・半径・まぶたを開いた角度（`eyes[].open`）・まつ毛を植える上まぶたのふち（`eyes[].lash`）・口の高さ（`mouth`）。
+  人物 id → 頭の割り当てと、人ごとの少しの違い（顔の幅・目の大きさ・あごの長さ）は `stage3d-hd.js` の `heianRole` / `HSHAPE`。データに 4 体がないときは、もとの虞美人の頭（`female`）で白粉の顔になる。
 - 確認：`node tests/stage-smoke.cjs`（実ブラウザーで全舞台・全人物 × 全姿勢・寄り・遊び・dist）。目視は `tools/stage-preview.html`（`?q=lite` で簡素な人形）。

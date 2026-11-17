@@ -62,12 +62,12 @@
     }
     return out;
   }
-  function decodeAttr(encoded, count, position, encoding) {
-    var raw = bytes(encoded), size = position ? 2 : 1;
+  function decodeAttr(encoded, count, position, encoding, comps) {
+    var raw = bytes(encoded), size = position ? 2 : 1, nc = comps || 3;
     if (!encoding) return raw;
     var res = new Uint8Array(count * size), view = new DataView(res.buffer), prev = [0, 0, 0], off = 0, w = 0, mask = position ? 65535 : 255;
     function num() { var v = 0, sh = 0, b; do { b = raw[off++]; v |= (b & 127) << sh; sh += 7; } while (b & 128); return v; }
-    function put(d) { var ax = w % 3, v = (prev[ax] + d) & mask; prev[ax] = v; if (position) view.setUint16(w * 2, v, true); else res[w] = v; w++; }
+    function put(d) { var ax = w % nc, v = (prev[ax] + d) & mask; prev[ax] = v; if (position) view.setUint16(w * 2, v, true); else res[w] = v; w++; }
     while (off < raw.length && w < count) {
       var v = num();
       if (v === 0) { var run = num(); while (run-- && w < count) put(0); }
@@ -84,8 +84,9 @@
     for (i = 0; i < pos.length; i++) pos[i] = dv.getInt16(i * 2, true) * A.quantization;
     var col = null;
     if (d.c) { var c = decodeAttr(d.c, d.v * 3, false, d.encoding && d.encoding.c); col = new Float32Array(d.v * 3); for (i = 0; i < col.length; i++) col[i] = c[i] / 255; }
-    var idx = decodeIdx(A.indices[d.i], d.t * 3, A.indexEncoding, d.v);
-    return (RAW[key] = { pos: pos, col: col, idx: idx, v: d.v });
+    var idx = decodeIdx(A.indices[d.i], d.t * 3, A.indexEncoding, d.v), uv = null;
+    if (d.uv) { var uq = decodeAttr(A.uvs[d.uv], d.v * 2, true, 'delta-rle-v1', 2), uvv = new DataView(uq.buffer); uv = new Float32Array(d.v * 2); for (i = 0; i < uv.length; i++) uv[i] = uvv.getUint16(i * 2, true) / 65535; }
+    return (RAW[key] = { pos: pos, col: col, idx: idx, v: d.v, uv: uv });
   }
 
   /* ================= 色の道具 ================= */
@@ -108,7 +109,7 @@
       var r = K.rng(17), x, i;
       g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, h);
       for (i = 0; i < 900; i++) {
-        x = r() * w; var l = 0.3 + r() * 0.7, c = (90 + r() * 120) | 0;
+        x = r() * w; var l = 0.3 + r() * 0.7, c = (80 + r() * 90) | 0;
         g.strokeStyle = 'rgba(' + c + ',' + c + ',' + c + ',' + (0.25 + r() * 0.4) + ')'; g.lineWidth = 0.6 + r() * 1.4;
         g.beginPath(); var y0 = r() * h; g.moveTo(x, y0); g.bezierCurveTo(x + (r() - 0.5) * 6, y0 + h * l * 0.33, x + (r() - 0.5) * 6, y0 + h * l * 0.66, x + (r() - 0.5) * 4, y0 + h * l); g.stroke();
         g.beginPath(); g.moveTo(x, y0 - h); g.bezierCurveTo(x + (r() - 0.5) * 6, y0 - h + h * l * 0.33, x, y0 - h + h * l * 0.66, x, y0 - h + h * l); g.stroke();
@@ -201,16 +202,102 @@
     return (GEO[key] = g);
   }
 
-  /* 肌の材質：口（あご）を少し動かす uniform を差し込む */
-  function skinMat(rough) {
-    var m = new T.MeshStandardMaterial({ vertexColors: true, roughness: rough || 0.55, metalness: 0 });
-    var u = m.userData.jaw = { value: 0 };
-    m.onBeforeCompile = function (sh) {
-      sh.uniforms.uJaw = u;
-      sh.vertexShader = 'uniform float uJaw;\n' + sh.vertexShader.replace('#include <begin_vertex>',
-        '#include <begin_vertex>\n  float jw = smoothstep(-0.040, -0.047, position.y) * (1.0 - smoothstep(0.018, 0.04, abs(position.x))) * smoothstep(0.035, 0.07, position.z) * (1.0 - smoothstep(-0.075, -0.1, position.y) * 0.0);\n  jw *= 1.0 - smoothstep(-0.08, -0.11, position.y);\n  transformed.y -= uJaw * jw * 0.0045;\n  transformed.z -= uJaw * jw * 0.0012;');
+  /* ---------- 平安の女性・子どもの頭（tools/build-heian-heads.py：可愛く脚色した CC0 の頭。UV と肌のテクスチャつき） ---------- */
+  function isHeian(role) { var A = root.GJ3_HD_ASSETS; return !!(A && A.heads && A.heads[role] && A.heads[role].from === 'heian'); }
+  function femRole(role) { return role === 'female' || isHeian(role); }
+  /* 継ぎ目（UV の境）で分かれた頂点の法線を、同じ位置どうしでそろえる（陰に筋が出ないように） */
+  function weldNormals(g) {
+    var p = g.attributes.position.array, I = g.index.array, n = p.length / 3, gid = new Int32Array(n), map = {}, i, k, ng = 0;
+    for (i = 0; i < n; i++) { k = Math.round(p[i * 3] * 2e5) + ',' + Math.round(p[i * 3 + 1] * 2e5) + ',' + Math.round(p[i * 3 + 2] * 2e5); if (map[k] == null) map[k] = ng++; gid[i] = map[k]; }
+    var acc = new Float32Array(ng * 3);
+    for (i = 0; i < I.length; i += 3) {
+      var a = I[i] * 3, b = I[i + 1] * 3, c = I[i + 2] * 3;
+      var ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2], vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+      var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      for (k = 0; k < 3; k++) { var q = gid[I[i + k]] * 3; acc[q] += nx; acc[q + 1] += ny; acc[q + 2] += nz; }
+    }
+    var nn = new Float32Array(n * 3);
+    for (i = 0; i < n; i++) { var q2 = gid[i] * 3, l = Math.sqrt(acc[q2] * acc[q2] + acc[q2 + 1] * acc[q2 + 1] + acc[q2 + 2] * acc[q2 + 2]) || 1; nn[i * 3] = acc[q2] / l; nn[i * 3 + 1] = acc[q2 + 1] / l; nn[i * 3 + 2] = acc[q2 + 2] / l; }
+    g.setAttribute('normal', new T.BufferAttribute(nn, 3));
+  }
+  /* 人ごとの少しの違い（顔の幅 w・目の大きさ e・あごの長さ c）と、幼子（若宮）をさらに幼く（extra） */
+  function heianShape(A, pos, n, sh, extra) {
+    var e0 = A.anchors.eyes[0], ey = e0.center[1], ex = Math.abs(e0.center[0]), ez = e0.center[2], my = A.anchors.mouth[1], i;
+    for (i = 0; i < n; i++) {
+      var x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      if (extra) {   /* 眉より下の顔を小さく、額は大きいまま */
+        var cy = ey + 0.016, w0 = smooth(cy + 0.04, cy - 0.035, y) * smooth(-0.06, 0.01, z) * smooth(-0.112, -0.08, y), k0 = 1 - 0.1 * extra * w0;
+        x *= k0; y = cy + (y - cy) * k0; z = -0.005 + (z + 0.005) * (1 - 0.05 * extra * w0);
+      }
+      if (sh) {
+        var wf = smooth(ey + 0.012, ey - 0.03, y) * smooth(-0.03, 0.02, z);
+        x *= 1 + ((sh.w || 1) - 1) * wf;
+        if (sh.e && sh.e !== 1) {
+          var sx = x < 0 ? -1 : 1, dx = x - sx * ex, dy = y - ey, we = Math.exp(-(dx * dx / 2.2e-4 + dy * dy / 1.6e-4)) * smooth(ez - 0.025, ez - 0.006, z);
+          x = sx * ex + dx * (1 + (sh.e - 1) * we); y = ey + dy * (1 + (sh.e - 1) * we);
+        }
+        if (sh.c && sh.c !== 1) { var wc = smooth(my, my - 0.035, y) * smooth(-0.02, 0.03, z) * smooth(-0.112, -0.095, y); y = my + (y - my) * (1 + (sh.c - 1) * wc); }
+      }
+      pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+    }
+  }
+  function heianGeo(role, q, look) {
+    var sh = look.shape, extra = look.extra || 0;
+    var key = ['H', role, q, extra, sh ? [sh.w, sh.e, sh.c].join(',') : ''].join('|');
+    if (GEO[key]) return GEO[key];
+    var R = rawPart(role, q, 'skin'), n = R.v, pos = new Float32Array(R.pos), A = root.GJ3_HD_ASSETS.heads[role];
+    if (sh || extra) heianShape(A, pos, n, sh, extra);
+    var g = new T.BufferGeometry();
+    g.setAttribute('position', new T.BufferAttribute(pos, 3));
+    g.setAttribute('uv', new T.BufferAttribute(R.uv, 2));
+    g.setIndex(new T.BufferAttribute(R.idx, 1));
+    weldNormals(g); g.computeBoundingSphere(); g._gjShared = true;
+    return (GEO[key] = g);
+  }
+  /* 頭の表面の半径（縦の軸 x=0, z=-0.01 のまわり）を、高さと向きで引く表。髪の房を頭・耳の外へ沿わせるのに使う */
+  function surfTable(geo) {
+    if (geo._surf) return geo._surf;
+    var P = geo.attributes.position.array, NY = 50, NA = 48, y0 = -0.12, y1 = 0.13, tab = new Float32Array(NY * NA), i, j;
+    for (i = 0; i < P.length; i += 3) {
+      var x = P[i], y = P[i + 1], z = P[i + 2] + 0.01, r = Math.sqrt(x * x + z * z), a = Math.atan2(x, z);
+      var iy = Math.round((y - y0) / (y1 - y0) * (NY - 1)), ia = ((Math.round(a / (2 * PI) * NA) % NA) + NA) % NA;
+      if (iy >= 0 && iy < NY && r > tab[iy * NA + ia]) tab[iy * NA + ia] = r;
+    }
+    for (var pass = 0; pass < 4; pass++) {   /* 空いた升を近所で埋める */
+      var t2 = tab.slice();
+      for (j = 0; j < NY; j++) for (i = 0; i < NA; i++) if (!tab[j * NA + i]) {
+        var m = 0; [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(function (d) { var jj = j + d[0], ii = (i + d[1] + NA) % NA; if (jj >= 0 && jj < NY) m = Math.max(m, tab[jj * NA + ii]); });
+        t2[j * NA + i] = m;
+      }
+      tab = t2;
+    }
+    var f = function (y, a) {
+      var fy = K.clamp((y - y0) / (y1 - y0) * (NY - 1), 0, NY - 1.001), fa = ((a / (2 * PI) * NA) % NA + NA) % NA;
+      var jy = Math.floor(fy), ja = Math.floor(fa), ty = fy - jy, ta = fa - ja, jb = (ja + 1) % NA, r0, r1;
+      r0 = tab[jy * NA + ja] * (1 - ta) + tab[jy * NA + jb] * ta; r1 = tab[(jy + 1) * NA + ja] * (1 - ta) + tab[(jy + 1) * NA + jb] * ta;
+      return r0 * (1 - ty) + r1 * ty;
     };
-    m.customProgramCacheKey = function () { return 'gj3skin'; };
+    return (geo._surf = f);
+  }
+  var HTEX = {};
+  function dataTex(key, uri, rep) {
+    if (HTEX[key]) return HTEX[key];
+    var t = new T.TextureLoader().load(uri); t.encoding = T.sRGBEncoding; t.anisotropy = 4; t._gjShared = true;
+    if (rep) t.wrapS = T.RepeatWrapping;
+    return (HTEX[key] = t);
+  }
+  function headTex(role, q) { return dataTex(role + '|' + q, root.GJ3_HD_ASSETS.heads[role].tex[q]); }
+
+  /* 肌の材質：口（あご）を少し動かす uniform を差し込む。my は口の合わせ目の高さ */
+  function skinMat(rough, my, tex) {
+    var m = new T.MeshStandardMaterial({ vertexColors: !tex, map: tex || null, roughness: rough || 0.55, metalness: 0 });
+    var u = m.userData.jaw = { value: 0 }, um = { value: my == null ? -0.0435 : my };
+    m.onBeforeCompile = function (sh) {
+      sh.uniforms.uJaw = u; sh.uniforms.uMY = um;
+      sh.vertexShader = 'uniform float uJaw;\nuniform float uMY;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+        '#include <begin_vertex>\n  float jw = smoothstep(uMY + 0.0035, uMY - 0.0035, position.y) * (1.0 - smoothstep(0.018, 0.04, abs(position.x))) * smoothstep(0.035, 0.07, position.z);\n  jw *= 1.0 - smoothstep(uMY - 0.0365, uMY - 0.0665, position.y);\n  transformed.y -= uJaw * jw * 0.0045;\n  transformed.z -= uJaw * jw * 0.0012;');
+    };
+    m.customProgramCacheKey = function () { return tex ? 'gj3skinT' : 'gj3skin'; };
     return m;
   }
 
@@ -233,7 +320,87 @@
     for (i = 0; i < p.count; i++) { var x = p.getX(i), y = p.getY(i); p.setZ(i, Math.sqrt(Math.max(0, R * R - x * x - y * y)) + 0.00008); }
     g.computeVertexNormals(); g._gjShared = true; return (EYEG[k] = g);
   }
+  /* まつ毛：上まぶたのふちの点（anchors.eyes[].lash）から、外へ・上へ反る帯。まぶた（半球）の座標に置き、瞬きで一緒に下りる */
+  function lashGeo(e, open, k) {
+    var c = e.center, pts = e.lash, n = pts.length, pos = [], uv = [], idx = [], ca = Math.cos(-open), sa = Math.sin(-open), i;
+    function put(x, y, z) { pos.push(x, y * ca - z * sa, y * sa + z * ca); }
+    for (i = 0; i < n; i++) {
+      var t = i / (n - 1), p = pts[i], ox = p[0] - c[0], oy = p[1] - c[1], oz = p[2] - c[2], l = Math.sqrt(ox * ox + oy * oy) || 1;
+      var ln = (0.0012 + 0.0026 * Math.pow(t, 1.2)) * k, dx = ox / l * 0.55, dy = oy / l * 0.55 + 0.5, dz = 0.55, dl = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      dx /= dl; dy /= dl; dz /= dl;
+      put(ox, oy, oz + 0.0002); put(ox + dx * ln, oy + dy * ln + ln * 0.35, oz + 0.0002 + dz * ln);
+      uv.push(t * 3, 0, t * 3, 1);
+      if (i < n - 1) idx.push(2 * i, 2 * i + 2, 2 * i + 3, 2 * i, 2 * i + 3, 2 * i + 1);
+    }
+    var g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals(); return g;
+  }
+  /* 虹彩：同心の輪で眼球の球面に沿わせ、角膜のふくらみぶん少し前へ（平らな三角形が白目に沈まないように） */
+  function irisGeoH(R, ir) {
+    var k = 'h' + R + '|' + ir; if (EYEG[k]) return EYEG[k];
+    var nr = 8, ns = 32, pos = [0, 0, R + 0.00035], uv = [0.5, 0.5], idx = [], i, j;
+    for (j = 1; j <= nr; j++) for (i = 0; i < ns; i++) {
+      var r = ir * j / nr, a = i / ns * PI * 2, x = r * Math.cos(a), y = r * Math.sin(a), f = r / ir;
+      pos.push(x, y, Math.sqrt(Math.max(0, R * R - x * x - y * y)) + 0.0001 + 0.00025 * (1 - f * f)); uv.push(0.5 + 0.5 * x / ir, 0.5 + 0.5 * y / ir);
+    }
+    for (i = 0; i < ns; i++) idx.push(0, 1 + i, 1 + (i + 1) % ns);
+    for (j = 0; j < nr - 1; j++) for (i = 0; i < ns; i++) { var a0 = 1 + j * ns + i, b0 = 1 + j * ns + (i + 1) % ns; idx.push(a0, a0 + ns, b0 + ns, a0, b0 + ns, b0); }
+    var g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals(); g._gjShared = true; return (EYEG[k] = g);
+  }
+  /* キャッチライト：瞳の右上に小さな光（照明によらず見える。まぶたの半球より内なので、まばたきでは隠れる） */
+  var CATCHM = null;
+  function catchGeo(R, ir) {
+    var k = 'c' + R + '|' + ir; if (EYEG[k]) return EYEG[k];
+    var g = new T.CircleGeometry(ir * 0.17, 12), p = g.attributes.position, cx = ir * 0.36, cy = ir * 0.4, i;
+    for (i = 0; i < p.count; i++) { var x = p.getX(i) * 1.15 + cx, y = p.getY(i) + cy; p.setXYZ(i, x, y, Math.sqrt(Math.max(0, R * R - x * x - y * y)) + 0.00045); }
+    g.computeVertexNormals(); g._gjShared = true; return (EYEG[k] = g);
+  }
+  var LASHM = null, IRISM = null;
+  function makeEyesH(role, look, q) {
+    var A = root.GJ3_HD_ASSETS, H = A.heads[role], grp = new T.Group(), lids = [];
+    var white = new T.MeshStandardMaterial({ color: lin('#d8d0c8'), roughness: 0.3 });
+    if (!IRISM) { IRISM = new T.MeshStandardMaterial({ map: dataTex('iris', A.tex.iris), roughness: 0.28 }); IRISM._gjShared = true; }
+    if (!LASHM) { LASHM = new T.MeshStandardMaterial({ map: dataTex('lash', A.tex.lash, true), roughness: 0.7, alphaTest: 0.35, side: T.DoubleSide }); LASHM._gjShared = true; }
+    var lidM = new T.MeshStandardMaterial({ color: lin(H.anchors.lid || look.tone), roughness: 0.6 });
+    var seg = q === 'low' ? 16 : 28, es = (look.shape && look.shape.e) || 1, geo = heianGeo(role, q, look), gp = geo.attributes.position.array, gu = geo.attributes.uv.array;
+    H.anchors.eyes.forEach(function (e0) {
+      /* 人ごとの違い・幼子の変形（heianShape）を、眼球の中心と大きさにも同じようにかける */
+      var e = e0;
+      if (look.shape || look.extra) {
+        var q3 = new Float32Array([e0.center[0], e0.center[1], e0.center[2], e0.center[0] + e0.radius, e0.center[1], e0.center[2], e0.center[0], e0.center[1] + e0.radius, e0.center[2]]);
+        heianShape(H, q3, 3, look.shape, look.extra || 0);
+        var sc3 = (Math.hypot(q3[3] - q3[0], q3[4] - q3[1], q3[5] - q3[2]) + Math.hypot(q3[6] - q3[0], q3[7] - q3[1], q3[8] - q3[2])) / 2 / e0.radius;
+        e = { center: [q3[0], q3[1], q3[2]], radius: e0.radius, open: e0.open, lash: e0.lash, s: sc3 };
+      }
+      var eg = new T.Group(); eg.position.fromArray(e.center); eg.scale.setScalar(e.s || 1);
+      /* まぶたの半球・眼球が、この網目のまぶたの皮膚を突き抜けないよう、要るだけ奥へ下げる（粗い網目は皮膚が目に近い） */
+      var c = e.center, rho = e.radius * 1.03 * (e.s || 1) + 0.00015, back = 0, i, k;
+      for (k = 0; k <= 30; k++) {
+        var cz = c[2] - k * 0.0001, bad = false;
+        for (i = 0; i < gp.length / 3 && !bad; i++) {
+          var u = gu[i * 2], v = gu[i * 2 + 1]; if (u > 0.774 && v < 0.35) continue;   /* 眼窩の内側（見えない面）は除く */
+          var dx = gp[i * 3] - c[0], dy = gp[i * 3 + 1] - c[1], dz = gp[i * 3 + 2] - cz;
+          if (dz < 0 || dx * dx + dy * dy > 4e-4) continue;
+          if (dx * dx + dy * dy + dz * dz < rho * rho) bad = true;
+        }
+        back = k * 0.0001; if (!bad) break;
+      }
+      eg.position.z -= back;
+      var R = e.radius;
+      eg.add(new T.Mesh(new T.SphereGeometry(R, seg, seg * 0.7 | 0), white));
+      eg.add(new T.Mesh(irisGeoH(R, R * (H.anchors.iris || 0.5)), IRISM));
+      if (!CATCHM) { CATCHM = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.82, depthWrite: false, fog: false }); CATCHM._gjShared = true; }
+      var cm = new T.Mesh(catchGeo(R, R * (H.anchors.iris || 0.5)), CATCHM); cm.renderOrder = 3; eg.add(cm);
+      var lid = new T.Mesh(new T.SphereGeometry(R * 1.03, seg, 10, 0, PI * 2, 0, PI / 2), lidM);
+      if (e0.lash && e0.lash.length > 2) lid.add(new T.Mesh(lashGeo(e0, e0.open, H.anchors.child ? 0.55 : 1), LASHM));
+      eg.add(lid); lids.push(lid);
+      grp.add(eg);
+    });
+    return { g: grp, lids: lids, mats: [white, lidM], open: H.anchors.eyes[0].open };
+  }
   function makeEyes(role, look, skin, q) {
+    if (isHeian(role)) return makeEyesH(role, look, q);
     var A = root.GJ3_HD_ASSETS.heads[role], grp = new T.Group(), lids = [];
     var white = new T.MeshStandardMaterial({ color: lin(role === 'female' ? '#d9cdc2' : '#cdbfae'), roughness: 0.28 });
     var iris = new T.MeshStandardMaterial({ map: irisTex(), roughness: 0.18 }); iris.map.encoding = T.sRGBEncoding;
@@ -254,20 +421,21 @@
 
   /* 髪の殻：頭皮（網目）の生え際より上を法線方向に浮かせる。生え際は頂点の不透明度でぼかす。
    *   style: long（女：中央で分け、耳の上まで。耳から下は下がり髪で隠す） / bob（尼・少女） / male（冠・烏帽子の下の髪と髻） */
-  function hairShellGeo(role, q, child, style) {
-    var key = 'shell|' + role + '|' + q + '|' + (child || 0) + '|' + style; if (GEO[key]) return GEO[key];
-    var skin = headGeo(role, q, { tone: '#ffffff', child: child }), P = skin.attributes.position, N = skin.attributes.normal, I = skin.index.array, n = P.count, i;
+  function hairShellGeo(role, q, child, style, hlook) {
+    var hk = hlook ? '|' + (hlook.extra || 0) + '|' + (hlook.shape ? [hlook.shape.w, hlook.shape.e, hlook.shape.c].join(',') : '') : '';
+    var key = 'shell|' + role + '|' + q + '|' + (child || 0) + '|' + style + hk; if (GEO[key]) return GEO[key];
+    var skin = hlook ? heianGeo(role, q, hlook) : headGeo(role, q, { tone: '#ffffff', child: child }), P = skin.attributes.position, N = skin.attributes.normal, I = skin.index.array, n = P.count, i;
     var male = style === 'male';
-    function edge(x, y, z) {   /* 生え際からの距離（正＝髪の内側, m） */
+    function edge(x, y, z) {   /* 生え際からの距離（正＝髪の内側, m）。新しい頭は額の生え際を丸い弧に */
       var ax = Math.abs(x), front = smooth(-0.01, 0.05, z);
-      var hy = male ? 0.074 + (z - 0.06) * 0.5 - ax * 0.12 : 0.07 - ax * 0.42 + Math.max(0, z - 0.06) * 0.6;
+      var hy = male ? 0.074 + (z - 0.06) * 0.5 - ax * 0.12 : hlook ? 0.074 - 8.5 * ax * ax + Math.max(0, z - 0.06) * 0.4 : 0.07 - ax * 0.42 + Math.max(0, z - 0.06) * 0.6;
       var side = male ? 0.03 + Math.max(0, z - 0.02) * 0.6 : (style === 'bob' ? -0.02 : 0.028);
       var back = male ? -0.055 : -0.08;
       var lim = K.lerp(K.lerp(back, side, smooth(-0.06, -0.02, z)), Math.max(hy, side), front);
       return y - lim;
     }
     var al = new Float32Array(n), map = new Int32Array(n).fill(-1), pos = [], nor = [], uv = [], col = [], idx = [];
-    for (i = 0; i < n; i++) al[i] = smooth(-0.002, 0.006, edge(P.getX(i), P.getY(i), P.getZ(i)));
+    for (i = 0; i < n; i++) al[i] = hlook ? smooth(-0.004, 0.009, edge(P.getX(i), P.getY(i), P.getZ(i))) : smooth(-0.002, 0.006, edge(P.getX(i), P.getY(i), P.getZ(i)));
     function vid(j) {
       if (map[j] >= 0) return map[j];
       var x = P.getX(j), y = P.getY(j), z = P.getZ(j), nx = N.getX(j), ny = N.getY(j), nz = N.getZ(j);
@@ -293,25 +461,25 @@
   var HAIRM = {};
   function hairMat(hex, gloss) {
     var k = hex + gloss; if (HAIRM[k]) return HAIRM[k];
-    var m = new T.MeshStandardMaterial({ color: lin(hex), roughness: gloss ? 0.34 : 0.5, metalness: 0.0, bumpMap: hairTex(), bumpScale: 0.0016, side: T.DoubleSide, map: hairTex(), vertexColors: true, transparent: true });
+    var m = new T.MeshStandardMaterial({ color: lin(hex), roughness: gloss ? 0.4 : 0.5, metalness: 0.0, bumpMap: hairTex(), bumpScale: 0.0007, side: T.DoubleSide, map: hairTex(), vertexColors: true, transparent: true });
     m._gjShared = true;
     return (HAIRM[k] = m);
   }
 
   /* 頭 1 つを組み立てる。look: { role, tone, paint, lip, child, hair, brow, beard } → { g, skin, lids, jaw, mouth } */
   function buildHead(look, q) {
-    var role = look.role, A = root.GJ3_HD_ASSETS.heads[role], g = new T.Group(), mats = [];
-    var sm = skinMat(look.paint === 'oshiroi' ? 0.5 : 0.58); mats.push(sm);
-    var skin = new T.Mesh(headGeo(role, q, look), sm); skin.castShadow = true; skin.receiveShadow = true; g.add(skin);
+    var role = look.role, A = root.GJ3_HD_ASSETS.heads[role], g = new T.Group(), mats = [], hz = isHeian(role), fem = femRole(role);
+    var sm = hz ? skinMat(0.52, A.anchors.mouth[1], headTex(role, q)) : skinMat(look.paint === 'oshiroi' ? 0.5 : 0.58); mats.push(sm);
+    var skin = new T.Mesh(hz ? heianGeo(role, q, look) : headGeo(role, q, look), sm); skin.castShadow = true; skin.receiveShadow = true; g.add(skin);
     var eyes = makeEyes(role, look, skin, q); g.add(eyes.g); mats = mats.concat(eyes.mats);
     /* 口の奥（口が開いたときに透けないよう） */
-    var mo = new T.Mesh(K.G.sph(8, 6), new T.MeshBasicMaterial({ color: 0x2a0f12 })); mo.scale.set(0.012, 0.004, 0.006); mo.position.set(0, role === 'female' ? -0.043 : -0.045, 0.066); g.add(mo); mats.push(mo.material);
-    var hk = look.hair || (role === 'female' ? 'long' : 'male');
+    var mo = new T.Mesh(K.G.sph(8, 6), new T.MeshBasicMaterial({ color: 0x2a0f12 })); mo.scale.set(0.012, 0.004, 0.006); mo.position.set(0, hz ? A.anchors.mouth[1] - 0.001 : role === 'female' ? -0.043 : -0.045, hz ? 0.072 : 0.066); g.add(mo); mats.push(mo.material);
+    var hk = look.hair || (fem ? 'long' : 'male');
     if (hk !== 'shaved' && hk !== 'none') {
-      var shell = new T.Mesh(hairShellGeo(role, q, look.child || 0, role !== 'female' ? 'male' : hk === 'ama' || hk === 'bob' ? 'bob' : 'long'), hairMat(look.hairCol || '#120f14', role === 'female'));
+      var shell = new T.Mesh(hairShellGeo(role, q, hz ? 0 : look.child || 0, !fem ? 'male' : hk === 'ama' || hk === 'bob' ? 'bob' : 'long', hz ? look : null), hairMat(look.hairCol || '#120f14', fem));
       shell.castShadow = true; shell.renderOrder = 1; g.add(shell);
     }
-    if (role !== 'female') {
+    if (!fem) {
       var brow = look.brow !== false && partGeo(role, q, 'brow', look.hairCol || '#211b1c');
       if (brow) g.add(new T.Mesh(brow, new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 })));
       var bd = look.beard && partGeo(role, q, 'beard', look.hairCol || '#231d1d');
@@ -320,7 +488,7 @@
         var mk = new T.Mesh(K.G.sph(12, 10), hairMat(look.hairCol || '#17131a', false)); mk.scale.set(0.022, 0.03, 0.022); mk.position.set(0, 0.13, -0.035); g.add(mk);
       }
     }
-    return { g: g, skin: skin, lids: eyes.lids, jaw: sm.userData.jaw, mats: mats, anchors: A.anchors };
+    return { g: g, skin: skin, lids: eyes.lids, jaw: sm.userData.jaw, mats: mats, anchors: A.anchors, open: eyes.open };
   }
 
 
@@ -353,10 +521,12 @@
   function strip(M, pts, widths, bulge, out, nv, col, alphaFn, nu) {
     var curve = new T.CatmullRomCurve3(pts.map(function (p) { return new T.Vector3(p[0], p[1], p[2]); }), false, 'centripetal');
     nv = nv || 16; nu = nu || 4;
-    var up = new T.Vector3(0, 1, 0), prev = new T.Vector3(1, 0, 0), ov = new T.Vector3(out[0], out[1], out[2]), P = [], S = [], N = [], W = [], j;
+    /* out が関数のときは、その点での外向き（頭の表面の法線）に帯を寝かせる（房が顔から突き出た板にならない） */
+    var radial = typeof out === 'function', up = new T.Vector3(0, 1, 0), prev = new T.Vector3(1, 0, 0), ov = radial ? new T.Vector3() : new T.Vector3(out[0], out[1], out[2]), P = [], S = [], N = [], W = [], j;
     for (j = 0; j <= nv; j++) {
-      var t = j / nv, p = curve.getPoint(t), tg = curve.getTangent(t), sd = new T.Vector3().crossVectors(up, tg);
-      if (sd.length() < 0.3) sd.copy(prev); else sd.normalize();
+      var t = j / nv, p = curve.getPoint(t), tg = curve.getTangent(t), sd;
+      if (radial) { var o0 = out(p); ov.set(o0[0], o0[1], o0[2]).normalize(); sd = new T.Vector3().crossVectors(tg, ov); if (sd.length() < 1e-4) sd.copy(prev); else sd.normalize(); }
+      else { sd = new T.Vector3().crossVectors(up, tg); if (sd.length() < 0.3) sd.copy(prev); else sd.normalize(); }
       if (sd.dot(prev) < 0) sd.negate(); prev.copy(sd);
       var n = new T.Vector3().crossVectors(tg, sd).normalize(); if (n.dot(ov) < 0) n.negate();
       var f = t * (widths.length - 1), i0 = Math.min(widths.length - 2, Math.floor(f));
@@ -378,8 +548,26 @@
     if (kind === 'noshi' || kind === 'kariginu') return 'young';
     return 'female';
   }
+  /* 新しい頭の役：若い女性 lady / 大人の女性 woman / 尼君 ama / 少女・子ども girl。人ごとの少しの違い（shape） */
+  var HROLE = { haha: 'woman', shonagon: 'woman', myobu: 'woman', otona: 'woman', amagimi: 'ama' };
+  var HSHAPE = { koui: { w: 0.975, e: 1.0, c: 1.0 }, fujitsubo: { w: 0.99, e: 1.03, c: 0.99 }, kokiden: { w: 1.025, e: 0.965, c: 1.03 }, murasaki: { w: 1.0, e: 1.03, c: 0.98 },
+    haha: { w: 0.98, e: 0.98, c: 1.02 }, shonagon: { w: 1.03, e: 0.97, c: 1.0 }, inuki: { w: 1.02, e: 0.98, c: 0.97 } };
+  function heianRole(id, kind) {
+    if (!isHeian('lady')) return null;
+    if (kind === 'shojo' || kind === 'warawa' || kind === 'chigo') return isHeian('girl') ? 'girl' : null;
+    if (kind === 'ama') return isHeian('ama') ? 'ama' : 'lady';
+    var r = HROLE[id]; return r && isHeian(r) ? r : 'lady';
+  }
   function headLookOf(id, kind, fem) {
     var L = { role: roleOf(id, kind) };
+    var hr = L.role === 'female' && heianRole(id, kind);
+    if (hr) {
+      L.role = hr; L.tone = '#' + root.GJ3_HD_ASSETS.heads[hr].skin;
+      L.hair = kind === 'ama' ? 'ama' : hr === 'girl' ? 'bob' : 'long';
+      L.extra = kind === 'chigo' ? 0.9 : 0;
+      L.shape = HSHAPE[id] || null;
+      return L;
+    }
     if (L.role === 'female') {
       var child = { shojo: 0.75, warawa: 1, chigo: 1.25 }[kind] || 0;
       L.child = child;
@@ -422,7 +610,8 @@
     this.trail = look.kind === 'juni' || look.kind === 'kouchiki' ? 1 : look.kind === 'ama' ? 0.55 : id === 'mikado' ? 0.7 : 0.35;
     this.hairStyle = hairStyleOf(look.kind, id);
     this.headLook = headLookOf(id, look.kind, this.fem);
-    if (id === 'ichinomiya' || id === 'wakamiya') { this.headLook.role = 'female'; }
+    if ((id === 'ichinomiya' || id === 'wakamiya') && !femRole(this.headLook.role)) { this.headLook.role = 'female'; }
+    if (opts.variant && isHeian(this.headLook.role) && !this.headLook.shape) { var vv = opts.variant; this.headLook.shape = { w: 1 + 0.02 * Math.sin(vv * 2.3), e: 1 + 0.025 * Math.cos(vv * 1.7), c: 1 + 0.02 * Math.sin(vv * 3.1 + 1) }; }
     /* 材質：装束（頂点色×絹の地紋）・髪 */
     this.mat = new T.MeshStandardMaterial({ vertexColors: true, map: silkTex(), bumpMap: silkBump(), bumpScale: 0.0004, roughness: 0.74, metalness: 0, side: T.DoubleSide });
     this.mat.emissive = new T.Color(0, 0, 0);
@@ -556,27 +745,29 @@
     /* 重力の向きを腕の座標へ（姿勢の目標値で） */
     var lf = side > 0 ? P.lf || 0 : P.rf || 0, a = (P.lean || 0) + lf, gy = -Math.cos(a), gz = -Math.sin(a);   /* 腕の座標での「下」 */
     var bag = (fem ? 0.2 : 0.15) * (this.child ? 0.8 : 1);
+    var hi = this.tier !== 'low' && !this.far, seed = this.seed;
+    /* 袖の面の 1 点：th＝腕のまわりの角度、vv＝肩 0 → 袖口 1。ひだ（縦のたるみ）・袖口への広がり・波打つ袖口の縁・袂の垂れ */
+    function pt(th, vv, shrink, len, off, o) {
+      var rx = K.lerp(0.055, fem ? 0.094 : 0.082, smooth(0, 0.55, vv)) - shrink, rz = K.lerp(0.068, fem ? 0.14 : 0.127, smooth(0, 0.65, vv)) - shrink;
+      var fl = 1 + 0.07 * smooth(0.8, 1, vv);
+      var fold = (0.011 * Math.sin(th * 4 + seed + side + vv * 1.6) + 0.006 * Math.sin(th * 7 + seed * 2 - vv * 2.2) + 0.0028 * Math.sin(th * 13 + side * 3 + seed)) * smooth(0.12, 0.9, vv);
+      var x = (rx * fl + fold + off) * Math.sin(th), z = (rz * fl + fold + off) * Math.cos(th), y = -len * vv;
+      /* 袂：腕の下側（重力の側）に平たい袋になって垂れる。腕を下ろすと袖口の先へ伸びる */
+      var dn = Math.max(0, -Math.cos(th)), sgz = Math.abs(gz), drop = bag * smooth(0.15, 1, vv) * Math.pow(dn, 0.6);
+      var hem = (0.012 * Math.sin(th * 3 + seed) + 0.006 * Math.sin(th * 5 + side * 2)) * smooth(0.82, 1, vv);
+      o[0] = x * (1 - 0.35 * drop / (bag + 1e-6) * sgz) * side; o[1] = y - drop * (1 - sgz) * 0.6 + hem; o[2] = z - drop * sgz * 1.1;
+      return o;
+    }
     layers.forEach(function (hex, li) {
       var col = lin(hex), len = L + li * 0.014, shrink = li * 0.005, v0 = li ? 0.55 : 0;
-      M.surf(28, 12, function (u, v, o) {
-        var vv = K.lerp(v0, 1, v), th = u * PI * 2, y = -len * vv;
-        var rx = K.lerp(0.05, fem ? 0.095 : 0.082, smooth(0, 0.6, vv)) - shrink, rz = K.lerp(0.06, fem ? 0.135 : 0.125, smooth(0, 0.7, vv)) - shrink;
-        var x = rx * Math.sin(th), z = rz * Math.cos(th);
-        /* 袂：腕の下側（重力の側）に平たい袋になって垂れる。腕を下ろすと袖口の先へ伸びる */
-        var dn = Math.max(0, -Math.cos(th)), sgz = Math.abs(gz), drop = bag * smooth(0.15, 1, vv) * Math.pow(dn, 0.6);
-        var fold = 0.005 * Math.sin(th * 5 + self.seed + side) * vv;
-        o[0] = x * (1 + fold * 8) * (1 - 0.35 * drop / (bag + 1e-6) * sgz); o[1] = y - drop * (1 - sgz) * 0.6; o[2] = z - drop * sgz * 1.1;
-        o[0] *= side;
-      }, col, 3, 2, true);
+      M.surf(hi ? 36 : 28, hi ? 16 : 12, function (u, v, o) { pt(u * PI * 2, K.lerp(v0, 1, v), shrink, len, 0, o); }, col, 3, 2, true);
     });
     /* 狩衣：袖口の袖括（そでぐくり）の紐を縁に通す */
     if (this.kind === 'kariginu') {
-      var cord = lin(c[1] || '#d8cfb0'), len0 = L;
+      var cord = lin(c[1] || '#d8cfb0');
       M.surf(28, 3, function (u, v, o) {
-        var th = u * PI * 2, a2 = v * PI * 2, rx = 0.082, rz = 0.125, r0 = 0.005;
-        var dn = Math.max(0, -Math.cos(th)), sgz = Math.abs(gz), drop = bag * Math.pow(dn, 0.6);
-        var x = (rx + r0 * Math.cos(a2)) * Math.sin(th) * (1 - 0.35 * drop / (bag + 1e-6) * sgz), z = (rz + r0 * Math.cos(a2)) * Math.cos(th);
-        o[0] = x * side; o[1] = -len0 + 0.006 + r0 * Math.sin(a2) - drop * (1 - sgz) * 0.6; o[2] = z - drop * sgz * 1.1;
+        var th = u * PI * 2, a2 = v * PI * 2, r0 = 0.005;
+        pt(th, 1, 0, L, r0 * Math.cos(a2), o); o[1] += 0.006 + r0 * Math.sin(a2);
       }, cord, 3, 1, true);
     }
     return M.build();
@@ -680,9 +871,11 @@
         if (end > -0.1) pts = pts.slice(0, 4).map(function (q, k) { return k === 3 ? [q[0], end, q[2]] : q; });
         strip(M, pts, [0.006, 0.03, 0.034, 0.036 * sp * 0.8, 0.04 * sp], 0.006, [x * 2, 0, -1], 18, black, hs === 'ama' || hs === 'ougi' || hs === 'mid' ? fadeEnd(0.04) : fadeEnd(0.1));
       });
+      var hz = isHeian(this.headLook.role) && this.heads.low;
+      if (hz) this._locksH(M, hs, r, fadeEnd);
       /* 鬢（びん）・額髪：顔の両脇に下がる房。耳を隠し、肩の前へ */
       var sideLen = hs === 'long' ? -0.36 : hs === 'ama' ? -0.19 : hs === 'ougi' ? -0.22 : hs === 'mid' ? -0.2 : 0;
-      if (sideLen) [-1, 1].forEach(function (sd) {
+      if (sideLen && !hz) [-1, 1].forEach(function (sd) {
         clumps(3, function (j, f, rr) {
           var x0 = 0.05 + j * 0.006, z0 = 0.026 - j * 0.022, wd = j === 1 ? 0.056 : 0.032;
           var pts = [[sd * x0 * 0.9, 0.07, z0 - 0.012], [sd * (x0 + 0.024), 0.045, z0 + 0.0], [sd * (0.088 + j * 0.005), -0.015, z0 - 0.008], [sd * (0.094 + j * 0.006), -0.12, z0 - 0.004], [sd * (0.096 + j * 0.008), sideLen * (0.95 + rr * 0.08), z0 + 0.016]];
@@ -698,6 +891,43 @@
     var kind = this.kind;
     if (kind === 'noshi' || kind === 'sokutai') this._mesh(this.headWrap, this._kanmuri(this.id === 'mikado'), lacquer());
     else if (kind === 'kariginu') this._mesh(this.headWrap, this._eboshi(), lacquer(true));
+  };
+  /* 新しい頭の房。頭の表面の表（surfTable）で、房を頭・耳の外へ沿わせる。角度 a：0＝正面、±π/2＝耳
+   *   鬢削ぎ（びんそぎ）：分け目から頬へかかる房。顔まわりを柔らかく縁どる（若い女性はあごの高さ、少女は頬まで）
+   *   長い髪：耳の後ろから肩の後ろへ（重ねた細い房。毛先は細り、透ける） */
+  HFig.prototype._locksH = function (M, hs, r, fadeEnd) {
+    var geo = heianGeo(this.headLook.role, 'high', this.headLook), R = surfTable(geo), white = lin('#ffffff');
+    function hp(a, y, off) { var rr = R(y, a) + off; return [Math.sin(a) * rr, y, Math.cos(a) * rr - 0.01]; }
+    function outw(p) { return [p.x, 0, p.z + 0.01]; }
+    var girl = this.headLook.role === 'girl', ama = hs === 'ama';
+    [-1, 1].forEach(function (sd) {
+      /* 鬢削ぎ：前の 2 房（頬の外の縁をおおい、毛先はあごの線へ内に寄る） */
+      var cut = girl ? -0.045 : ama ? -0.03 : -0.07;
+      [0, 1].forEach(function (j) {
+        var da = j * 0.16, rr = r(), end = cut - j * 0.018 - rr * 0.008;
+        var pts = [hp(sd * (0.3 + da * 0.5), 0.088, 0.001), hp(sd * (0.74 + da), 0.066, 0.0035), hp(sd * (1.0 + da), 0.035, 0.0045), hp(sd * (1.08 + da), 0.0, 0.005),
+          hp(sd * (1.05 + da), (end + 0.0) * 0.5, 0.004), hp(sd * (0.98 + da), end, 0.0035)];
+        var w = girl ? 0.02 : 0.022;
+        strip(M, pts, [0.006, w * 0.8, w, w * 0.95, w * 0.7, w * 0.25], function (v) { return 0.0022 * (1 - v * 0.6); }, outw, 20, white, fadeEnd(0.16), 5);
+      });
+      if (hs === 'ama' || hs === 'ougi' || hs === 'mid') {
+        /* 尼削ぎ（肩で切りそろえる）・少女の髪（肩で扇のように広がる）・童の髪：耳の後ろから肩へ */
+        var len = hs === 'ama' ? -0.17 : hs === 'ougi' ? -0.2 : -0.19, spread = hs === 'ougi' ? 1.55 : 1.0;
+        for (var j3 = 0; j3 < 3; j3++) {
+          var a3 = sd * (1.22 + j3 * 0.2), r3 = r(), x3 = sd * (0.072 + j3 * 0.006), z3 = -0.004 - j3 * 0.026;
+          var pts3 = [hp(a3, 0.062, 0.003), hp(a3 + sd * 0.05, 0.0, 0.0045), [x3, -0.07, z3], [x3 * (1 + 0.3 * (spread - 1)), (len - 0.07) / 2, z3 - 0.006], [x3 * spread, len - r3 * 0.02, z3 - 0.012]];
+          strip(M, pts3, [0.012, 0.03, 0.034, 0.036 * spread, 0.042 * spread], 0.004, outw, 18, white, fadeEnd(hs === 'ama' ? 0.03 : 0.08), 4);
+        }
+      }
+      if (hs !== 'long') return;
+      /* 長い髪：耳の後ろから肩の後ろへ、細い房を重ねる */
+      for (var j = 0; j < 4; j++) {
+        var a0 = sd * (1.3 + j * 0.16), rr2 = r(), x1 = sd * (0.085 + j * 0.008 + rr2 * 0.006), z1 = -0.02 - j * 0.02;
+        var p0 = hp(a0, 0.06, 0.003), p1 = hp(a0 + sd * 0.05, 0.0, 0.004);
+        var pts2 = [p0, p1, [x1, -0.08, z1 + 0.006], [x1 * 1.12, -0.17, z1], [x1 * 1.16, -0.3 - rr2 * 0.04, z1 - 0.01]];
+        strip(M, pts2, [0.012, 0.028, 0.03, 0.03, 0.012], 0.004, outw, 20, white, fadeEnd(0.15), 4);
+      }
+    });
   };
   var LAQ = {};
   function lacquer(soft) {
@@ -846,7 +1076,7 @@
         M.surf(20, 8, function (u, v, o) { var th = u * PI * 2, ph = (v - 0.5) * PI, rx = 0.2 - i * 0.01, ry = 0.09 - i * 0.012, rz = 0.1; o[0] = Math.sin(ph) * rx; o[1] = Math.cos(th) * Math.cos(ph) * ry; o[2] = Math.sin(th) * Math.cos(ph) * rz; }, lin(hx), 4, 2, true);
       });
       var bundle = new T.Mesh(M.build(), this.mat); bundle.position.set(0.02, 0.1, 0.22); bundle.rotation.z = 0.5; grp.add(bundle);
-      var bh = buildHead({ role: 'female', tone: SKIN.child, child: 1.4, cheek: 0.3, lip: '#c05a5a', hair: 'bob' }, 'low');
+      var bh = buildHead(isHeian('girl') ? { role: 'girl', tone: '#' + root.GJ3_HD_ASSETS.heads.girl.skin, extra: 1.1, hair: 'bob' } : { role: 'female', tone: SKIN.child, child: 1.4, cheek: 0.3, lip: '#c05a5a', hair: 'bob' }, 'low');
       bh.g.scale.setScalar(0.58); bh.g.position.set(0.17, 0.2, 0.22); bh.g.rotation.set(-0.2, 0.9, 0.5); grp.add(bh.g);
     }
     parent.add(grp);
@@ -900,6 +1130,7 @@
     var open = this.fem ? -0.04 : -0.24, shut = 0.62, b = this.blink > 0 ? Math.sin(this.blink * PI) : 0;
     var low = P.anim === 'weep' || this.pose === 'bow' ? 0.25 : 0;
     var h = this.head; if (h) {
+      if (h.open != null) { open = h.open; low = low ? 0.45 : 0; }
       for (i = 0; i < h.lids.length; i++) h.lids[i].rotation.x = open + low + (shut - open - low) * b;
       /* 口：話し手だけ、音節ほどの速さで小さく開け閉め */
       var jw = this.spk > 0.05 ? this.spk * Math.max(0, Math.sin(t * 13 + Math.sin(t * 3.1) * 2)) * (0.6 + 0.4 * Math.sin(t * 2.3)) : 0;
