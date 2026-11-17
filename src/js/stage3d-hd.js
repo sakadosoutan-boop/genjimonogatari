@@ -338,7 +338,7 @@
   /* 虹彩：同心の輪で眼球の球面に沿わせ、角膜のふくらみぶん少し前へ（平らな三角形が白目に沈まないように） */
   function irisGeoH(R, ir) {
     var k = 'h' + R + '|' + ir; if (EYEG[k]) return EYEG[k];
-    var nr = 8, ns = 32, pos = [0, 0, R + 0.00035], uv = [0.5, 0.5], idx = [], i, j;
+    var nr = 5, ns = 24, pos = [0, 0, R + 0.00035], uv = [0.5, 0.5], idx = [], i, j;
     for (j = 1; j <= nr; j++) for (i = 0; i < ns; i++) {
       var r = ir * j / nr, a = i / ns * PI * 2, x = r * Math.cos(a), y = r * Math.sin(a), f = r / ir;
       pos.push(x, y, Math.sqrt(Math.max(0, R * R - x * x - y * y)) + 0.0001 + 0.00025 * (1 - f * f)); uv.push(0.5 + 0.5 * x / ir, 0.5 + 0.5 * y / ir);
@@ -375,15 +375,15 @@
       }
       var eg = new T.Group(); eg.position.fromArray(e.center); eg.scale.setScalar(e.s || 1);
       /* まぶたの半球・眼球が、この網目のまぶたの皮膚を突き抜けないよう、要るだけ奥へ下げる（粗い網目は皮膚が目に近い） */
-      var c = e.center, rho = e.radius * 1.03 * (e.s || 1) + 0.00015, back = 0, i, k;
+      var c = e.center, rho = e.radius * 1.03 * (e.s || 1) + 0.00015, back = 0, i, k, cand = [];
+      for (i = 0; i < gp.length / 3; i++) {
+        if (gu[i * 2] > 0.774 && gu[i * 2 + 1] < 0.35) continue;   /* 眼窩の内側（見えない面）は除く */
+        var dx = gp[i * 3] - c[0], dy = gp[i * 3 + 1] - c[1];
+        if (dx * dx + dy * dy <= 4e-4 && gp[i * 3 + 2] > c[2] - 0.004) cand.push(dx * dx + dy * dy, gp[i * 3 + 2]);
+      }
       for (k = 0; k <= 30; k++) {
         var cz = c[2] - k * 0.0001, bad = false;
-        for (i = 0; i < gp.length / 3 && !bad; i++) {
-          var u = gu[i * 2], v = gu[i * 2 + 1]; if (u > 0.774 && v < 0.35) continue;   /* 眼窩の内側（見えない面）は除く */
-          var dx = gp[i * 3] - c[0], dy = gp[i * 3 + 1] - c[1], dz = gp[i * 3 + 2] - cz;
-          if (dz < 0 || dx * dx + dy * dy > 4e-4) continue;
-          if (dx * dx + dy * dy + dz * dz < rho * rho) bad = true;
-        }
+        for (i = 0; i < cand.length && !bad; i += 2) { var dz = cand[i + 1] - cz; if (dz >= 0 && cand[i] + dz * dz < rho * rho) bad = true; }
         back = k * 0.0001; if (!bad) break;
       }
       eg.position.z -= back;
@@ -760,7 +760,7 @@
     }
     layers.forEach(function (hex, li) {
       var col = lin(hex), len = L + li * 0.014, shrink = li * 0.005, v0 = li ? 0.55 : 0;
-      M.surf(hi ? 36 : 28, hi ? 16 : 12, function (u, v, o) { pt(u * PI * 2, K.lerp(v0, 1, v), shrink, len, 0, o); }, col, 3, 2, true);
+      M.surf(li ? 24 : (hi ? 32 : 28), li ? 6 : (hi ? 14 : 12), function (u, v, o) { pt(u * PI * 2, K.lerp(v0, 1, v), shrink, len, 0, o); }, col, 3, 2, true);   /* 内の衣は袖口の近くだけなので粗く */
     });
     /* 狩衣：袖口の袖括（そでぐくり）の紐を縁に通す */
     if (this.kind === 'kariginu') {
@@ -896,7 +896,7 @@
    *   鬢削ぎ（びんそぎ）：分け目から頬へかかる房。顔まわりを柔らかく縁どる（若い女性はあごの高さ、少女は頬まで）
    *   長い髪：耳の後ろから肩の後ろへ（重ねた細い房。毛先は細り、透ける） */
   HFig.prototype._locksH = function (M, hs, r, fadeEnd) {
-    var geo = heianGeo(this.headLook.role, 'high', this.headLook), R = surfTable(geo), white = lin('#ffffff');
+    var geo = heianGeo(this.headLook.role, 'low', this.headLook), R = surfTable(geo), white = lin('#ffffff');
     function hp(a, y, off) { var rr = R(y, a) + off; return [Math.sin(a) * rr, y, Math.cos(a) * rr - 0.01]; }
     function outw(p) { return [p.x, 0, p.z + 0.01]; }
     var girl = this.headLook.role === 'girl', ama = hs === 'ama';
@@ -908,7 +908,7 @@
         var pts = [hp(sd * (0.3 + da * 0.5), 0.088, 0.001), hp(sd * (0.74 + da), 0.066, 0.0035), hp(sd * (1.0 + da), 0.035, 0.0045), hp(sd * (1.08 + da), 0.0, 0.005),
           hp(sd * (1.05 + da), (end + 0.0) * 0.5, 0.004), hp(sd * (0.98 + da), end, 0.0035)];
         var w = girl ? 0.02 : 0.022;
-        strip(M, pts, [0.006, w * 0.8, w, w * 0.95, w * 0.7, w * 0.25], function (v) { return 0.0022 * (1 - v * 0.6); }, outw, 20, white, fadeEnd(0.16), 5);
+        strip(M, pts, [0.006, w * 0.8, w, w * 0.95, w * 0.7, w * 0.25], function (v) { return 0.0022 * (1 - v * 0.6); }, outw, 14, white, fadeEnd(0.16), 4);
       });
       if (hs === 'ama' || hs === 'ougi' || hs === 'mid') {
         /* 尼削ぎ（肩で切りそろえる）・少女の髪（肩で扇のように広がる）・童の髪：耳の後ろから肩へ */
@@ -916,7 +916,7 @@
         for (var j3 = 0; j3 < 3; j3++) {
           var a3 = sd * (1.22 + j3 * 0.2), r3 = r(), x3 = sd * (0.072 + j3 * 0.006), z3 = -0.004 - j3 * 0.026;
           var pts3 = [hp(a3, 0.062, 0.003), hp(a3 + sd * 0.05, 0.0, 0.0045), [x3, -0.07, z3], [x3 * (1 + 0.3 * (spread - 1)), (len - 0.07) / 2, z3 - 0.006], [x3 * spread, len - r3 * 0.02, z3 - 0.012]];
-          strip(M, pts3, [0.012, 0.03, 0.034, 0.036 * spread, 0.042 * spread], 0.004, outw, 18, white, fadeEnd(hs === 'ama' ? 0.03 : 0.08), 4);
+          strip(M, pts3, [0.012, 0.03, 0.034, 0.036 * spread, 0.042 * spread], 0.004, outw, 12, white, fadeEnd(hs === 'ama' ? 0.03 : 0.08), 3);
         }
       }
       if (hs !== 'long') return;
@@ -925,7 +925,7 @@
         var a0 = sd * (1.3 + j * 0.16), rr2 = r(), x1 = sd * (0.085 + j * 0.008 + rr2 * 0.006), z1 = -0.02 - j * 0.02;
         var p0 = hp(a0, 0.06, 0.003), p1 = hp(a0 + sd * 0.05, 0.0, 0.004);
         var pts2 = [p0, p1, [x1, -0.08, z1 + 0.006], [x1 * 1.12, -0.17, z1], [x1 * 1.16, -0.3 - rr2 * 0.04, z1 - 0.01]];
-        strip(M, pts2, [0.012, 0.028, 0.03, 0.03, 0.012], 0.004, outw, 20, white, fadeEnd(0.15), 4);
+        strip(M, pts2, [0.012, 0.028, 0.03, 0.03, 0.012], 0.004, outw, 14, white, fadeEnd(0.15), 3);
       }
     });
   };
