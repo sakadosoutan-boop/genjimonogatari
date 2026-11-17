@@ -96,7 +96,7 @@
 /* ---------- 文字の窓（スマホでは画面の下 4 割以内。長い文は中でスクロール） ---------- */
 .gj-panel { position: absolute; z-index: 2; left: 50%; bottom: calc(var(--gj-safe-b) + 12px); transform: translateX(-50%); width: min(900px, calc(100% - 24px)); max-height: 46vh; display: flex; flex-direction: column;
   border: 1px solid rgba(184, 146, 58, .85); border-radius: 10px; box-shadow: 0 0 0 3px rgba(246, 239, 223, .5), 0 0 0 4px rgba(184, 146, 58, .35), 0 14px 36px rgba(24, 12, 34, .45); background-color: rgba(247, 241, 228, .96); animation: gj-panel-in .28s ease both; }
-@keyframes gj-panel-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+@keyframes gj-panel-in { from { opacity: 0; } }   /* 位置は動かさない（画面の外へ出ないように） */
 .gj-panel-tools { position: absolute; right: 10px; top: -46px; }
 .gj-panel-tools .gj-mini { position: relative; z-index: 0; min-height: 44px; padding: 0 16px; color: #fff8e6; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); text-decoration: none; font-size: 12.5px; letter-spacing: .1em; }
 .gj-panel-tools .gj-mini::before { content: ""; position: absolute; z-index: -1; inset: 5px 0; border-radius: 18px; background: rgba(36, 22, 46, .64); border: 1px solid rgba(255, 248, 230, .3); }

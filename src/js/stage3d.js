@@ -249,7 +249,7 @@
       var o = L[i], u = K.clamp(((o.x - cx) * dx + (o.z - cz) * dz) / len2, 0, 1);
       if (u > 0.96) continue;                                   /* 人物のすぐ後ろの物は遮らない */
       var px = cx + dx * u - o.x, pz = cz + dz * u - o.z, y = cy + (ty - cy) * u;
-      if (px * px + pz * pz < o.r * o.r && y < o.top) return true;
+      if (px * px + pz * pz < o.r * o.r && y < o.top && y > (o.bot == null ? -9 : o.bot)) return true;
     }
     return false;
   }
@@ -271,14 +271,17 @@
       S.figOcc = (S.set.occ || []).slice();
       for (var k2 in S.figs) if (k2 !== at) S.figs[k2].forEach(function (o) { var hp = headOf(k2, _v2); S.figOcc.push({ x: o.root.position.x, z: o.root.position.z, r: 0.3 * o.root.scale.x, top: hp ? hp.y + 0.12 * o.root.scale.x : 1.4 }); });
       var els = close ? [0.24, 0.36, 0.5, 0.66] : [0.42, 0.6], offs = [0, 0.18, -0.18, 0.36, -0.36, 0.55, -0.55, 0.8, -0.8], best = null, i, j;
-      for (j = 0; j < els.length && !best; j++) for (i = 0; i < offs.length; i++) {
-        var az = pref + offs[i], el = els[j], ce = Math.cos(el);
-        var cx = h.x + dist * Math.sin(az) * ce, cy = ty + dist * Math.sin(el), cz = h.z + dist * Math.cos(az) * ce;
-        if (!blocked(cx, cy, cz, h.x, h.y, h.z) && !blocked(cx, cy, cz, h.x, h.y - 0.3 * sc, h.z) && !blocked(cx, cy, cz, h.x, ty - 0.2 * sc, h.z)) { best = [az, el]; break; }
-      }
-      if (!best) best = [pref, 0.75];
+      /* 遠い順に試し、どれも遮られるなら少しずつ近づく（顔は大きくなる） */
+      [1, 0.8, 0.62].forEach(function (kd) {
+        for (j = 0; j < els.length && !best; j++) for (i = 0; i < offs.length; i++) {
+          var az = pref + offs[i], el = els[j], ce = Math.cos(el), dd = dist * kd;
+          var cx = h.x + dd * Math.sin(az) * ce, cy = ty + dd * Math.sin(el), cz = h.z + dd * Math.cos(az) * ce;
+          if (!blocked(cx, cy, cz, h.x, h.y, h.z) && !blocked(cx, cy, cz, h.x, h.y - 0.3 * sc, h.z) && !blocked(cx, cy, cz, h.x, ty - 0.2 * sc, h.z)) { best = [az, el, dd]; break; }
+        }
+      });
+      if (!best) best = [pref, 0.75, dist];
       S.figOcc = null;
-      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = dist * narrow;
+      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = best[2] * narrow;
     } else if (S.set.slots[at]) {
       var s = S.set.slots[at]; S.focusAt = at;
       S.goal.t.set(s[0], (s[3] || 0) + 0.6 * fs, s[1]); S.goal.az = c.az; S.goal.el = 0.5; S.goal.dist = fd * 1.5 * narrow;

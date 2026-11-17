@@ -31,7 +31,7 @@
   function slab(g, x0, z0, x1, z1, top, th) { K.bx(g, x1 - x0, th, z1 - z0, M().slab, (x0 + x1) / 2, top - th / 2 - 0.004, (z0 + z1) / 2); }
   /* 寄りのカメラが避ける物（柱・几帳・屏風）。舞台を作るたびに集め直す。{ x, z, r, top } */
   var OCC = [];
-  function occ(x, z, r, top) { OCC.push({ x: x, z: z, r: r, top: top }); }
+  function occ(x, z, r, top, bot) { OCC.push({ x: x, z: z, r: r, top: top, bot: bot || -9 }); }
   function pillar(g, x, z, h, r, y) { occ(x, z, (r || 0.1) + 0.06, (y || 0) + (h || PH)); return K.cy(g, r || 0.1, h || PH, M().hashira, x, y || 0, z, K.HQ ? 16 : 8); }
   /* 面取りした角材（長押・高欄の横木）。断面は角を落とした四角、長さ方向が x */
   var CBOX = null;
@@ -70,6 +70,9 @@
     top = top || 2.05; bottom = bottom == null ? 0.05 : bottom;
     var m = K.grp(g, x, top, z, ry); m.userData.dyn = true;
     var h = top - bottom;
+    /* 寄りのカメラが避ける帯（巻き上げた御簾も、垂らした御簾も） */
+    var ox = Math.cos(ry || 0), oz = -Math.sin(ry || 0), nb = Math.max(2, Math.round(w / 0.4));
+    for (var oi = 0; oi <= nb; oi++) { var f = oi / nb - 0.5; occ(x + ox * f * w, z + oz * f * w, 0.22, top + 0.05, bottom - 0.15); }
     var p = new T.Mesh(K.G.vplane(), M().misu); p.scale.set(w, h, 1); p.position.y = -h / 2; p.renderOrder = 3; m.add(p);
     var uv = null;
     K.bx(m, w, 0.16, 0.02, M().mokou, 0, -0.08, 0.012, 0, false);

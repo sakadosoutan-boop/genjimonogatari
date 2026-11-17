@@ -5969,6 +5969,16 @@ html.gj-big .gj-tool { font-size: 15px; }
         o[0] *= side;
       }, col, 3, 2, true);
     });
+    /* 狩衣：袖口の袖括（そでぐくり）の紐を縁に通す */
+    if (this.kind === 'kariginu') {
+      var cord = lin(c[1] || '#d8cfb0'), len0 = L;
+      M.surf(28, 3, function (u, v, o) {
+        var th = u * PI * 2, a2 = v * PI * 2, rx = 0.082, rz = 0.125, r0 = 0.005;
+        var dn = Math.max(0, -Math.cos(th)), sgz = Math.abs(gz), drop = bag * Math.pow(dn, 0.6);
+        var x = (rx + r0 * Math.cos(a2)) * Math.sin(th) * (1 - 0.35 * drop / (bag + 1e-6) * sgz), z = (rz + r0 * Math.cos(a2)) * Math.cos(th);
+        o[0] = x * side; o[1] = -len0 + 0.006 + r0 * Math.sin(a2) - drop * (1 - sgz) * 0.6; o[2] = z - drop * sgz * 1.1;
+      }, cord, 3, 1, true);
+    }
     return M.build();
   };
   HFig.prototype._hands = function () {
@@ -6366,7 +6376,7 @@ html.gj-big .gj-tool { font-size: 15px; }
       flame: K.mat('#ffd9a0', { basic: true, map: K.tex.glow(), transparent: true, depthWrite: false, add: true, fog: false })
     });
   }
-  S._reset = function () { M.c = null; };
+  S._reset = function () { M.c = null; if (CBOX) { CBOX.dispose(); CBOX = null; } };
 
   /* ---------- 小さな部品 ---------- */
   function floorTop(g, x0, z0, x1, z1, y, mat) { var w = x1 - x0, d = z1 - z0; return K.pl(g, w, d, mat || M().ita, (x0 + x1) / 2, y, (z0 + z1) / 2, w / 2.4, d / 2.4); }
@@ -6374,10 +6384,23 @@ html.gj-big .gj-tool { font-size: 15px; }
   /* 寄りのカメラが避ける物（柱・几帳・屏風）。舞台を作るたびに集め直す。{ x, z, r, top } */
   var OCC = [];
   function occ(x, z, r, top) { OCC.push({ x: x, z: z, r: r, top: top }); }
-  function pillar(g, x, z, h, r, y) { occ(x, z, (r || 0.1) + 0.06, (y || 0) + (h || PH)); return K.cy(g, r || 0.1, h || PH, M().hashira, x, y || 0, z, 8); }
+  function pillar(g, x, z, h, r, y) { occ(x, z, (r || 0.1) + 0.06, (y || 0) + (h || PH)); return K.cy(g, r || 0.1, h || PH, M().hashira, x, y || 0, z, K.HQ ? 16 : 8); }
+  /* 面取りした角材（長押・高欄の横木）。断面は角を落とした四角、長さ方向が x */
+  var CBOX = null;
+  function cbox() {
+    if (CBOX) return CBOX;
+    var c = 0.14, sh = new T.Shape();
+    sh.moveTo(-0.5 + c, -0.5); sh.lineTo(0.5 - c, -0.5); sh.lineTo(0.5, -0.5 + c); sh.lineTo(0.5, 0.5 - c); sh.lineTo(0.5 - c, 0.5); sh.lineTo(-0.5 + c, 0.5); sh.lineTo(-0.5, 0.5 - c); sh.lineTo(-0.5, -0.5 + c); sh.closePath();
+    var g = new T.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false });
+    g.translate(0, 0, -0.5); g.rotateY(PI / 2); g.computeVertexNormals();
+    var uv = g.attributes.uv; for (var i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 0.5, uv.getY(i) * 0.5);
+    g._gjShared = true; return (CBOX = g);
+  }
   function beam(g, x0, z0, x1, z1, y, t, mat) {
     var dx = x1 - x0, dz = z1 - z0, L = Math.sqrt(dx * dx + dz * dz);
-    return K.bx(g, L, t || 0.14, t || 0.14, mat || M().nageshi, (x0 + x1) / 2, y, (z0 + z1) / 2, -Math.atan2(dz, dx));
+    if (!K.HQ) return K.bx(g, L, t || 0.14, t || 0.14, mat || M().nageshi, (x0 + x1) / 2, y, (z0 + z1) / 2, -Math.atan2(dz, dx));
+    var m = new T.Mesh(cbox(), mat || M().nageshi); m.scale.set(L, t || 0.14, t || 0.14); m.rotation.y = -Math.atan2(dz, dx);
+    m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2); m.castShadow = true; m.receiveShadow = true; g.add(m); return m;
   }
   /* 置き畳（平安の畳は敷きつめず、座る所にだけ置く）。heri: 'kourai' | 'ungen' */
   function tatami(g, x, z, ry, heri, w, d, y) {
@@ -7316,7 +7339,7 @@ html.gj-big .gj-tool { font-size: 15px; }
     sun.position.set(L.sun[2][0], L.sun[2][1], L.sun[2][2]).multiplyScalar(4);
     if (S.q === 'high' && !opt.noShadow) {
       var R = set.shadowR || 12, c = sun.shadow.camera;
-      sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+      sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
       c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 1; c.far = 160; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
     }
     sc.add(sun); sc.add(sun.target);
