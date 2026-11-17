@@ -244,7 +244,7 @@ html.gj-noruby rt { display: none; }
 /* ---------- 文字の窓（スマホでは画面の下 4 割以内。長い文は中でスクロール） ---------- */
 .gj-panel { position: absolute; z-index: 2; left: 50%; bottom: calc(var(--gj-safe-b) + 12px); transform: translateX(-50%); width: min(900px, calc(100% - 24px)); max-height: 46vh; display: flex; flex-direction: column;
   border: 1px solid rgba(184, 146, 58, .85); border-radius: 10px; box-shadow: 0 0 0 3px rgba(246, 239, 223, .5), 0 0 0 4px rgba(184, 146, 58, .35), 0 14px 36px rgba(24, 12, 34, .45); background-color: rgba(247, 241, 228, .96); animation: gj-panel-in .28s ease both; }
-@keyframes gj-panel-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+@keyframes gj-panel-in { from { opacity: 0; } }   /* 位置は動かさない（画面の外へ出ないように） */
 .gj-panel-tools { position: absolute; right: 10px; top: -46px; }
 .gj-panel-tools .gj-mini { position: relative; z-index: 0; min-height: 44px; padding: 0 16px; color: #fff8e6; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); text-decoration: none; font-size: 12.5px; letter-spacing: .1em; }
 .gj-panel-tools .gj-mini::before { content: ""; position: absolute; z-index: -1; inset: 5px 0; border-radius: 18px; background: rgba(36, 22, 46, .64); border: 1px solid rgba(255, 248, 230, .3); }
@@ -5570,8 +5570,8 @@ html.gj-big .gj-tool { font-size: 15px; }
       if (look.cheek) { var ch = Math.exp(-(Math.pow(Math.abs(x) - 0.036, 2) + Math.pow(y + 0.008, 2)) / 0.00035) * smooth(0.03, 0.06, z); mixc(c, c, blush, ch * look.cheek); }
       /* 引眉（殿上眉）：もとの眉の上、額の高いところにぼかした墨 */
       if (look.paint === 'oshiroi' && !child) {
-        var bx = Math.abs(x) - 0.022, by = y - 0.058 + bx * 0.1, mb = Math.exp(-(bx * bx / 0.00008 + by * by / 0.000022)) * smooth(0.04, 0.07, z);
-        mixc(c, c, ink, K.clamp(mb * 1.15, 0, 0.82));
+        var bx = Math.abs(x) - 0.022, by = y - 0.058 + bx * 0.12, mb = Math.exp(-(bx * bx / 0.00014 + by * by / 0.00002)) * smooth(0.04, 0.07, z);
+        mixc(c, c, ink, K.clamp(mb * 0.8, 0, 0.6));
       }
       col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     }
@@ -6383,7 +6383,7 @@ html.gj-big .gj-tool { font-size: 15px; }
   function slab(g, x0, z0, x1, z1, top, th) { K.bx(g, x1 - x0, th, z1 - z0, M().slab, (x0 + x1) / 2, top - th / 2 - 0.004, (z0 + z1) / 2); }
   /* 寄りのカメラが避ける物（柱・几帳・屏風）。舞台を作るたびに集め直す。{ x, z, r, top } */
   var OCC = [];
-  function occ(x, z, r, top) { OCC.push({ x: x, z: z, r: r, top: top }); }
+  function occ(x, z, r, top, bot) { OCC.push({ x: x, z: z, r: r, top: top, bot: bot || -9 }); }
   function pillar(g, x, z, h, r, y) { occ(x, z, (r || 0.1) + 0.06, (y || 0) + (h || PH)); return K.cy(g, r || 0.1, h || PH, M().hashira, x, y || 0, z, K.HQ ? 16 : 8); }
   /* 面取りした角材（長押・高欄の横木）。断面は角を落とした四角、長さ方向が x */
   var CBOX = null;
@@ -6422,6 +6422,9 @@ html.gj-big .gj-tool { font-size: 15px; }
     top = top || 2.05; bottom = bottom == null ? 0.05 : bottom;
     var m = K.grp(g, x, top, z, ry); m.userData.dyn = true;
     var h = top - bottom;
+    /* 寄りのカメラが避ける帯（巻き上げた御簾も、垂らした御簾も） */
+    var ox = Math.cos(ry || 0), oz = -Math.sin(ry || 0), nb = Math.max(2, Math.round(w / 0.4));
+    for (var oi = 0; oi <= nb; oi++) { var f = oi / nb - 0.5; occ(x + ox * f * w, z + oz * f * w, 0.22, top + 0.05, bottom - 0.15); }
     var p = new T.Mesh(K.G.vplane(), M().misu); p.scale.set(w, h, 1); p.position.y = -h / 2; p.renderOrder = 3; m.add(p);
     var uv = null;
     K.bx(m, w, 0.16, 0.02, M().mokou, 0, -0.08, 0.012, 0, false);
@@ -7432,7 +7435,7 @@ html.gj-big .gj-tool { font-size: 15px; }
       var o = L[i], u = K.clamp(((o.x - cx) * dx + (o.z - cz) * dz) / len2, 0, 1);
       if (u > 0.96) continue;                                   /* 人物のすぐ後ろの物は遮らない */
       var px = cx + dx * u - o.x, pz = cz + dz * u - o.z, y = cy + (ty - cy) * u;
-      if (px * px + pz * pz < o.r * o.r && y < o.top) return true;
+      if (px * px + pz * pz < o.r * o.r && y < o.top && y > (o.bot == null ? -9 : o.bot)) return true;
     }
     return false;
   }
@@ -7454,14 +7457,19 @@ html.gj-big .gj-tool { font-size: 15px; }
       S.figOcc = (S.set.occ || []).slice();
       for (var k2 in S.figs) if (k2 !== at) S.figs[k2].forEach(function (o) { var hp = headOf(k2, _v2); S.figOcc.push({ x: o.root.position.x, z: o.root.position.z, r: 0.3 * o.root.scale.x, top: hp ? hp.y + 0.12 * o.root.scale.x : 1.4 }); });
       var els = close ? [0.24, 0.36, 0.5, 0.66] : [0.42, 0.6], offs = [0, 0.18, -0.18, 0.36, -0.36, 0.55, -0.55, 0.8, -0.8], best = null, i, j;
-      for (j = 0; j < els.length && !best; j++) for (i = 0; i < offs.length; i++) {
-        var az = pref + offs[i], el = els[j], ce = Math.cos(el);
-        var cx = h.x + dist * Math.sin(az) * ce, cy = ty + dist * Math.sin(el), cz = h.z + dist * Math.cos(az) * ce;
-        if (!blocked(cx, cy, cz, h.x, h.y, h.z) && !blocked(cx, cy, cz, h.x, h.y - 0.3 * sc, h.z) && !blocked(cx, cy, cz, h.x, ty - 0.2 * sc, h.z)) { best = [az, el]; break; }
-      }
-      if (!best) best = [pref, 0.75];
+      /* 遠い順に試し、どれも遮られるなら少しずつ近づく（顔は大きくなる） */
+      [1, 0.8, 0.62].forEach(function (kd) {
+        for (j = 0; j < els.length && !best; j++) for (i = 0; i < offs.length; i++) {
+          var az = pref + offs[i], el = els[j], ce = Math.cos(el), dd = dist * kd * narrow;
+          var cx = h.x + dd * Math.sin(az) * ce, cy = ty + dd * Math.sin(el), cz = h.z + dd * Math.cos(az) * ce;
+          var sx = Math.cos(az) * 0.2 * sc, sz = -Math.sin(az) * 0.2 * sc;   /* 肩の幅ぶん左右も */
+          if (!blocked(cx, cy, cz, h.x, h.y, h.z) && !blocked(cx, cy, cz, h.x, h.y - 0.3 * sc, h.z) && !blocked(cx, cy, cz, h.x, ty - 0.2 * sc, h.z) &&
+              !blocked(cx, cy, cz, h.x + sx, h.y - 0.25 * sc, h.z + sz) && !blocked(cx, cy, cz, h.x - sx, h.y - 0.25 * sc, h.z - sz)) { best = [az, el, dd]; break; }
+        }
+      });
+      if (!best) best = [pref, 0.75, dist * narrow];
       S.figOcc = null;
-      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = dist * narrow;
+      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = best[2];
     } else if (S.set.slots[at]) {
       var s = S.set.slots[at]; S.focusAt = at;
       S.goal.t.set(s[0], (s[3] || 0) + 0.6 * fs, s[1]); S.goal.az = c.az; S.goal.el = 0.5; S.goal.dist = fd * 1.5 * narrow;

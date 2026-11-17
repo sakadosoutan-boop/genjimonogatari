@@ -274,14 +274,16 @@
       /* 遠い順に試し、どれも遮られるなら少しずつ近づく（顔は大きくなる） */
       [1, 0.8, 0.62].forEach(function (kd) {
         for (j = 0; j < els.length && !best; j++) for (i = 0; i < offs.length; i++) {
-          var az = pref + offs[i], el = els[j], ce = Math.cos(el), dd = dist * kd;
+          var az = pref + offs[i], el = els[j], ce = Math.cos(el), dd = dist * kd * narrow;
           var cx = h.x + dd * Math.sin(az) * ce, cy = ty + dd * Math.sin(el), cz = h.z + dd * Math.cos(az) * ce;
-          if (!blocked(cx, cy, cz, h.x, h.y, h.z) && !blocked(cx, cy, cz, h.x, h.y - 0.3 * sc, h.z) && !blocked(cx, cy, cz, h.x, ty - 0.2 * sc, h.z)) { best = [az, el, dd]; break; }
+          var sx = Math.cos(az) * 0.2 * sc, sz = -Math.sin(az) * 0.2 * sc;   /* 肩の幅ぶん左右も */
+          if (!blocked(cx, cy, cz, h.x, h.y, h.z) && !blocked(cx, cy, cz, h.x, h.y - 0.3 * sc, h.z) && !blocked(cx, cy, cz, h.x, ty - 0.2 * sc, h.z) &&
+              !blocked(cx, cy, cz, h.x + sx, h.y - 0.25 * sc, h.z + sz) && !blocked(cx, cy, cz, h.x - sx, h.y - 0.25 * sc, h.z - sz)) { best = [az, el, dd]; break; }
         }
       });
-      if (!best) best = [pref, 0.75, dist];
+      if (!best) best = [pref, 0.75, dist * narrow];
       S.figOcc = null;
-      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = best[2] * narrow;
+      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = best[2];
     } else if (S.set.slots[at]) {
       var s = S.set.slots[at]; S.focusAt = at;
       S.goal.t.set(s[0], (s[3] || 0) + 0.6 * fs, s[1]); S.goal.az = c.az; S.goal.el = 0.5; S.goal.dist = fd * 1.5 * narrow;

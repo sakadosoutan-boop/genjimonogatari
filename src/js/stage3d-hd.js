@@ -170,8 +170,8 @@
       if (look.cheek) { var ch = Math.exp(-(Math.pow(Math.abs(x) - 0.036, 2) + Math.pow(y + 0.008, 2)) / 0.00035) * smooth(0.03, 0.06, z); mixc(c, c, blush, ch * look.cheek); }
       /* 引眉（殿上眉）：もとの眉の上、額の高いところにぼかした墨 */
       if (look.paint === 'oshiroi' && !child) {
-        var bx = Math.abs(x) - 0.022, by = y - 0.058 + bx * 0.1, mb = Math.exp(-(bx * bx / 0.00008 + by * by / 0.000022)) * smooth(0.04, 0.07, z);
-        mixc(c, c, ink, K.clamp(mb * 1.15, 0, 0.82));
+        var bx = Math.abs(x) - 0.022, by = y - 0.058 + bx * 0.12, mb = Math.exp(-(bx * bx / 0.00014 + by * by / 0.00002)) * smooth(0.04, 0.07, z);
+        mixc(c, c, ink, K.clamp(mb * 0.8, 0, 0.6));
       }
       col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     }
