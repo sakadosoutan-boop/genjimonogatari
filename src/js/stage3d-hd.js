@@ -294,6 +294,12 @@
     var u = m.userData.jaw = { value: 0 }, um = { value: my == null ? -0.0435 : my };
     m.onBeforeCompile = function (sh) {
       sh.uniforms.uJaw = u; sh.uniforms.uMY = um;
+      if (tex) {
+        /* 肌：やわらかな暖かい補助光（影側が灰色・黄ばみに沈まない）と、輪郭のほのかな透け（皮膚の下の赤み）。
+           白塗りにはせず、陰影は残す */
+        sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>',
+          '#include <aomap_fragment>\n  { float facing = saturate(dot(normal, normalize(vViewPosition)));\n    float rimF = pow(1.0 - facing, 2.2);\n    reflectedLight.indirectDiffuse += diffuseColor.rgb * (0.16 + 0.30 * rimF) * vec3(1.0, 0.80, 0.80);\n    reflectedLight.directDiffuse *= vec3(1.0, 0.975, 0.985); }');
+      }
       sh.vertexShader = 'uniform float uJaw;\nuniform float uMY;\n' + sh.vertexShader.replace('#include <begin_vertex>',
         '#include <begin_vertex>\n  float jw = smoothstep(uMY + 0.0035, uMY - 0.0035, position.y) * (1.0 - smoothstep(0.018, 0.04, abs(position.x))) * smoothstep(0.035, 0.07, position.z);\n  jw *= 1.0 - smoothstep(uMY - 0.0365, uMY - 0.0665, position.y);\n  transformed.y -= uJaw * jw * 0.0045;\n  transformed.z -= uJaw * jw * 0.0012;');
     };
@@ -445,7 +451,8 @@
       pos.push(x + nx * th, y + ny * th, z + nz * th); nor.push(nx, ny, nz);
       var a = Math.atan2(x, z + 0.02);
       uv.push(a / PI * 4, (y + 0.1) * 6);
-      col.push(1, 1, 1, al[j]);
+      var ring = hlook ? 1 + 0.9 * Math.exp(-Math.pow((y - 0.085 + 0.25 * Math.max(0, -z - 0.02)) / 0.012, 2)) * smooth(-0.07, 0.02, z) : 1;
+      col.push(ring, ring, ring, al[j]);
       return (map[j] = pos.length / 3 - 1);
     }
     for (i = 0; i < I.length; i += 3) {
@@ -464,6 +471,28 @@
     var m = new T.MeshStandardMaterial({ color: lin(hex), roughness: gloss ? 0.4 : 0.5, metalness: 0.0, bumpMap: hairTex(), bumpScale: 0.0007, side: T.DoubleSide, map: hairTex(), vertexColors: true, transparent: true });
     m._gjShared = true;
     return (HAIRM[k] = m);
+  }
+
+  /* 房の透明度の画像：真ん中は詰まり、縁と毛先では細い毛が 1 本ずつ途切れる（帯が板に見えないように）。
+     u＝房の幅（0..1）、v＝根元 0 → 毛先 1（画像の上が毛先） */
+  function strandAlpha() {
+    return ctex('strandA', 128, 256, function (g, w, h) {
+      var im = g.createImageData(w, h), d = im.data, r = K.rng(31), endC = [], keep = [], x, y;
+      for (x = 0; x < w; x++) { endC.push(0.72 + 0.28 * Math.pow(r(), 0.6)); keep.push(r()); }
+      for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+        var u = (x + 0.5) / w, v = 1 - (y + 0.5) / h, e = Math.min(u, 1 - u) * 2, i = (y * w + x) * 4;
+        var on = v < endC[x] && keep[x] > 1 - Math.min(1, e * 2.2 + 0.15) ? 1 : 0;
+        var a = on ? 255 * (1 - 0.35 * K.clamp((v - endC[x] + 0.12) / 0.12, 0, 1)) : 0;
+        d[i] = d[i + 1] = d[i + 2] = a; d[i + 3] = 255;
+      }
+      g.putImageData(im, 0, 0);
+    }, false);
+  }
+  var LOCKM = {};
+  function lockMat(hex) {
+    if (LOCKM[hex]) return LOCKM[hex];
+    var m = hairMat(hex, true).clone(); m.alphaMap = strandAlpha(); m.alphaTest = 0.4; m._gjShared = true;
+    return (LOCKM[hex] = m);
   }
 
   /* 頭 1 つを組み立てる。look: { role, tone, paint, lip, child, hair, brow, beard } → { g, skin, lids, jaw, mouth } */
@@ -616,6 +645,7 @@
     this.mat = new T.MeshStandardMaterial({ vertexColors: true, map: silkTex(), bumpMap: silkBump(), bumpScale: 0.0004, roughness: 0.74, metalness: 0, side: T.DoubleSide });
     this.mat.emissive = new T.Color(0, 0, 0);
     this.hmat = hairMat(this.fem || this.child ? '#120f14' : '#17131a', true);
+    if (isHeian(this.headLook.role)) this.hmat = lockMat('#120f14');
     this.root = new T.Group(); this.root.scale.setScalar(this.scale);
     this.pivot = new T.Group(); this.root.add(this.pivot);
     this.upper = new T.Group(); this.pivot.add(this.upper);
