@@ -166,6 +166,7 @@ activity(kind, cfg, cb)         // 3D の遊びを始める。→ { stop() }
 - 話し手は口（あご）が小さく動く。全員、呼吸とまばたき。
 - 女性・子どもの頭（`heads.lady` 若い女性 / `woman` 大人の女性 / `ama` 尼君 / `girl` 少女・子ども）は `tools/build-heian-heads.py`（Blender）が作る。
   4 体は同じ網目なので、三角形の並び（`indices.hf_high/hf_low`）と UV（`uvs.hf_high/hf_low`）は共有し、頭ごとに位置と肌の画像（`tex.high` 1024 / `tex.low` 512、JPEG の data URI）を持つ。
+  ふだんの顔はやわらかな微笑みで、表情なしの形への差を `lod.*.skin.dn`（位置と同じ符号化）に持つ。ゲームはモーフとして混ぜ、泣く・伏す・礼・祈る・書く姿勢では表情なしへ戻す。
   虹彩・まつ毛の画像は `tex.iris` / `tex.lash`。目印 `anchors` に眼球の中心・半径・まぶたを開いた角度（`eyes[].open`）・まつ毛を植える上まぶたのふち（`eyes[].lash`）・口の高さ（`mouth`）。
   人物 id → 頭の割り当てと、人ごとの少しの違い（顔の幅・目の大きさ・あごの長さ）は `stage3d-hd.js` の `heianRole` / `HSHAPE`。データに 4 体がないときは、もとの虞美人の頭（`female`）で白粉の顔になる。
 - 確認：`node tests/stage-smoke.cjs`（実ブラウザーで全舞台・全人物 × 全姿勢・寄り・遊び・dist）。目視は `tools/stage-preview.html`（`?q=lite` で簡素な人形）。

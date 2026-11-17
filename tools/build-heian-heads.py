@@ -187,19 +187,6 @@ def cute(P, T, E, cfg, U=None):
         P[:, 2] += c['lower_full'] * gauss(x, 0.011) * gauss(y - (mouthY - 0.0062), 0.0035) * smooth(0.08 * k0, 0.09 * k0, z)
     if c.get('mouth_back'):   # 口もとを少し奥へ（唇が前へ突き出て見えないように）
         P[:, 2] -= c['mouth_back'] * gauss(x, 0.02) * gauss(y - mouthY, 0.012) * smooth(0.065 * k0, 0.088 * k0, z)
-    if c.get('smile') and U is not None:
-        # 口角を上げる（やわらかな微笑み）。唇の合わせ目＝口の中の UV の島（タイル u≥1）と顔の島が共有する頂点。
-        # 合わせ目の口角と、その先の溝ごと持ち上げる（紅だけ上げても網目の「への字」の溝が残るため）
-        tile = np.floor(U[..., 0].mean(1)) >= 1
-        sv = np.intersect1d(np.unique(T[tile]), np.unique(T[~tile]))
-        Q = P[sv]; Q = Q[(np.abs(Q[:, 1] - mouthY) < 0.012) & (Q[:, 2] > 0.06)]
-        if len(Q) > 4:
-            xc = np.abs(Q[:, 0]).max()
-            order = np.argsort(np.abs(Q[:, 0])); qx = np.abs(Q[order, 0]); qy = Q[order, 1]
-            sy = np.interp(np.abs(x), qx, qy)   # その |x| での合わせ目の高さ（口角より外は口角の高さ）
-            lift = smooth(0.3 * xc, 1.0 * xc, np.abs(x)) * (1 - 0.5 * smooth(xc, xc + 0.012, np.abs(x)))
-            ws = lift * gauss(y - sy, 0.0065) * smooth(0.05 * k0, 0.08 * k0, z)
-            P[:, 1] += c['smile'] * ws
     # 5) 頬のふくらみ
     N = normals(P, T); x, y, z = P[:, 0], P[:, 1], P[:, 2]
     wc = gauss(np.abs(x) - 0.040 * k0, 0.016) * gauss(y - fy(-0.016), 0.017) * smooth(0.035, 0.065, z)
@@ -229,7 +216,31 @@ def cute(P, T, E, cfg, U=None):
     wq = smooth(-0.088, -0.106, P[:, 1]) * smooth(0.0, 0.0001, P[:, 1] - bottom + 1)   # 首の下ほど強く
     k = np.where(r > 1, 1 / np.maximum(r, 1e-6), 1.0)
     P[:, 0] = dx * (1 + (k - 1) * wq); P[:, 2] = cz + dz * (1 + (k - 1) * wq)
-    return P, dict(eyes=eyes, eye_r=c['eye_r'], mouthY=float(mouthY), noseY=float(noseY), chinY=float(chinY), cfg=c)
+    # 10) 表情（最後の段）：やわらかな微笑み。ここまでの位置を「表情なし」として残し、ゲームでは泣く・伏す姿勢のときにそちらへ戻す
+    P0n = P.copy()
+    x, y, z = P[:, 0], P[:, 1], P[:, 2]
+    ex0, ey0, ez0 = abs(eyes[0][0]), eyes[0][1], eyes[0][2]
+    if c.get('smile') and U is not None:
+        # 口角を上げて少し奥へ。唇の合わせ目＝口の中の UV の島（タイル u≥1）と顔の島が共有する頂点。
+        # 合わせ目の口角と、その先の溝ごと持ち上げる（紅だけ上げても網目の「への字」の溝が残るため）
+        tile = np.floor(U[..., 0].mean(1)) >= 1
+        sv = np.intersect1d(np.unique(T[tile]), np.unique(T[~tile]))
+        Q = P[sv]; Q = Q[(np.abs(Q[:, 1] - mouthY) < 0.012) & (Q[:, 2] > 0.06)]
+        if len(Q) > 4:
+            xc = np.abs(Q[:, 0]).max()
+            order = np.argsort(np.abs(Q[:, 0])); qx = np.abs(Q[order, 0]); qy = Q[order, 1]
+            sy = np.interp(np.abs(x), qx, qy)
+            lift = smooth(0.3 * xc, 1.0 * xc, np.abs(x)) * (1 - 0.5 * smooth(xc, xc + 0.012, np.abs(x)))
+            ws = lift * gauss(y - sy, 0.0065) * smooth(0.05 * k0, 0.08 * k0, z)
+            P[:, 1] += c['smile'] * ws
+            P[:, 2] -= c.get('smile_back', 0.0) * ws
+    if c.get('cheek_raise'):   # 頬の高いところ（頬骨の上）を持ち上げて丸く前へ
+        wz = gauss(np.abs(x) - (ex0 + 0.006), 0.014) * gauss(y - (ey0 - 0.024), 0.011) * smooth(0.035, 0.065, z)
+        P[:, 1] += c['cheek_raise'] * wz; P[:, 2] += 0.6 * c['cheek_raise'] * wz
+    if c.get('lower_lid'):   # 下まぶたを少し上げる（笑った目）。眼球に沿うよう前へも
+        wd = gauss(np.abs(x) - ex0, 0.0092) * gauss(y - (ey0 - 0.0080), 0.0040) * smooth(ez0 - 0.006, ez0 + 0.004, z)
+        P[:, 1] += c['lower_lid'] * wd; P[:, 2] += 0.45 * c['lower_lid'] * wd
+    return P, dict(eyes=eyes, eye_r=c['eye_r'], mouthY=float(mouthY), noseY=float(noseY), chinY=float(chinY), cfg=c, neutral=P0n)
 
 # ---------------------------------------------------------------- 光線：外から見えるか・AO
 def eye_spheres(eyes, R):
@@ -494,7 +505,7 @@ def paint_face(pos, ao, kid, L, look, S):
     img[max(0, cy2 - r):cy2 + r, max(0, cx - r):cx + r] = srgb(look['skin']) * 0.92
     return img
 
-def iris_img(S=256, col='#3a2416', seed=5):
+def iris_img(S=256, col='#4b2e1c', seed=5):
     yy, xx = np.mgrid[0:S, 0:S]
     dx = (xx + 0.5 - S / 2) / (S / 2); dy = (yy + 0.5 - S / 2) / (S / 2)
     r = np.sqrt(dx * dx + dy * dy); a = np.arctan2(dy, dx); rng = np.random.default_rng(seed); st = np.zeros_like(r)
@@ -504,7 +515,7 @@ def iris_img(S=256, col='#3a2416', seed=5):
     base = srgb(col); light = base * 1.9 + 0.05; t = smooth(0.38, 0.95, r)
     c = base[None, None, :] * (0.8 + 0.25 * st[..., None]) * (1 - 0.35 * t[..., None])
     c = c + (light - base)[None, None, :] * (0.35 * np.exp(-((r - 0.55) / 0.14) ** 2) * (0.6 + 0.4 * st))[..., None]
-    c = c * (1 - 0.75 * smooth(0.80, 0.97, r)[..., None])
+    c = c * (1 - 0.86 * smooth(0.74, 0.92, r)[..., None])
     pupil = 1 - smooth(0.30, 0.34, r)
     c = c * (1 - pupil[..., None]) + np.array([0.012, 0.01, 0.01]) * pupil[..., None]
     # キャッチライト（画像の上が v=1。右上に柔らかい楕円、左下に小さな点）
@@ -533,26 +544,26 @@ SKIN = '#f3d5c2'
 ROLES = {
     # 若い女性：桐壺の更衣・藤壺・弘徽殿の女御・女房たち
     'lady': dict(cfg=dict(face_y=0.84, eye_x=1.40, eye_y=1.36, eye_r=1.24, eye_tilt=0.0022, lid_drop=0.0016, inner=0.001, nose=0.74, nose_w=0.84, nose_lift=-0.0006,
-                          cheek=0.0046, cheek_low=0.0018, jaw=0.17, chin=0.0022, chin_round=1.15, lips_w=0.80, lips_full=-0.0005, lower_full=0.0007, smile=0.0026, mouth_back=0.0026,
+                          cheek=0.0046, cheek_low=0.0018, jaw=0.17, chin=0.0022, chin_round=1.15, lips_w=0.80, lips_full=-0.0005, lower_full=0.0007, smile=0.0040, smile_back=0.0009, cheek_raise=0.0030, lower_lid=0.0030, mouth_back=0.0026,
                           forehead=0.0032, neck=0.12),
-                 look=dict(skin='#f8dfd5', pink='#f0a8a4', blush=0.42, blushCol='#f39a9e', lip='#d0566a', lipA=0.76, lipW=0.0150, bow=0.0021, lowerH=0.0080, smileP=0.0019, lipHi=0.16, hair='long',
-                           linerW=1.55, wing=0.0026, crease=0.0028, creaseA=0.55, shadow='#e3a3a0', shadowA=0.3, browY=0.0205, browW=0.0026, browA=0.62, browCol='#3a2823',
-                           browArch=0.0016, browHead=0.0010, browTail=0.0008, aoMin=0.8, tear=0.16, waterline='#e2b4ac'), iris=0.55, age=0.0, skinHex='f8dfd5'),
+                 look=dict(skin='#f8dccb', pink='#f0a89c', blush=0.42, blushCol='#f2a097', lip='#d0566a', lipA=0.76, lipW=0.0150, bow=0.0021, lowerH=0.0080, smileP=0.0019, lipHi=0.16, hair='long',
+                           linerW=1.85, wing=0.0028, crease=0.0028, creaseA=0.55, shadow='#e3a3a0', shadowA=0.3, browY=0.0205, browW=0.0026, browA=0.62, browCol='#3a2823',
+                           browArch=0.0016, browHead=0.0010, browTail=0.0008, aoMin=0.8, tear=0.26, waterline='#e2b4ac'), iris=0.58, age=0.0, skinHex='f8dccb'),
     # 大人の女性：母北の方・少納言の乳母（同じ系統で年相応に。可愛さの変形を弱め、化粧も控えめ）
-    'woman': dict(cfg=dict(face_y=0.91, eye_x=1.20, eye_y=1.15, eye_r=1.10, lid_drop=0.0020, nose_w=0.9, smile=0.0005, mouth_back=0.001, cheek=0.0024, jaw=0.09, chin=0.0018,
+    'woman': dict(cfg=dict(face_y=0.91, eye_x=1.20, eye_y=1.15, eye_r=1.10, lid_drop=0.0020, nose_w=0.9, smile=0.0013, smile_back=0.0004, cheek_raise=0.0008, lower_lid=0.0006, mouth_back=0.001, cheek=0.0024, jaw=0.09, chin=0.0018,
                            nose=0.88, lips_w=0.9, lips_full=0.0006, age=0.35),
                   look=dict(skin='#f5d8ca', blush=0.22, lip='#c05a66', lipA=0.62, smileP=0.0006, liner=0.85, linerW=1.25, shadowA=0.22, browA=0.62, age=0.2, aoMin=0.7, hair='long', waterline='#dcaaa2'), age=0.3, skinHex='f5d8ca'),
     # 尼君：「四十余ばかり…いと白うあてに痩せたれど、つらつきふくらかに」。上品な老い
-    'ama': dict(cfg=dict(face_y=0.93, eye_x=1.10, eye_y=1.06, eye_r=1.05, lid_drop=0.0025, cheek=0.0022, jaw=0.08, chin=0.0012,
+    'ama': dict(cfg=dict(smile=0.0007, lower_lid=0.0004, face_y=0.93, eye_x=1.10, eye_y=1.06, eye_r=1.05, lid_drop=0.0025, cheek=0.0022, jaw=0.08, chin=0.0012,
                          nose=0.9, lips_w=0.9, lips_full=0.0002, age=0.9),
                 look=dict(skin='#f4e0d4', blush=0.08, lip='#b06a6c', lipA=0.45, liner=0.45, creaseA=0.5, shadowA=0.12, browA=0.5, browCol='#4a3a34', age=0.85, tear=0.0, aoMin=0.68, hair='bob'), age=0.9, skinHex='f4e0d4'),
     # 少女・子ども：若紫（十歳ほど）・犬君・童べ・幼子。幼く清らかに（化粧はしない）
     'girl': dict(cfg=dict(face_y=0.78, eye_x=1.46, eye_y=1.44, eye_r=1.30, eye_tilt=0.0008, lid_drop=0.0011, inner=0.0006, nose=0.62, nose_w=0.80, nose_lift=-0.0004,
-                          cheek=0.0055, cheek_low=0.0030, jaw=0.15, chin=0.0040, chin_round=1.4, lips_w=0.72, lips_full=-0.0006, lower_full=0.0003, smile=0.0034, mouth_back=0.0024,
+                          cheek=0.0055, cheek_low=0.0030, jaw=0.15, chin=0.0040, chin_round=1.4, lips_w=0.72, lips_full=-0.0006, lower_full=0.0003, smile=0.0044, smile_back=0.0009, cheek_raise=0.0034, lower_lid=0.0032, mouth_back=0.0024,
                           neck=0.22, forehead=0.0060),
-                 look=dict(skin='#f9e2d8', pink='#f2aaa4', blush=0.46, blushCol='#f4a0a0', blushR=0.020, blushY=0.024, lip='#e0868a', lipA=0.42, lipW=0.0128, bow=0.0012,
+                 look=dict(skin='#f9dfcf', pink='#f2aa9e', blush=0.46, blushCol='#f4a49a', blushR=0.020, blushY=0.024, lip='#e0868a', lipA=0.42, lipW=0.0128, bow=0.0012,
                            lowerH=0.0072, smileP=0.0024, hair='bob', liner=0.5, linerW=1.1, creaseA=0.3, shadowA=0.0, browA=0.36, browW=0.0024, browCol='#5a3e30', browY=0.0215,
-                           browArch=0.0014, browHead=0.0012, browTail=0.0004, aoMin=0.82, tear=0.10, waterline='#e6bcb4'), iris=0.57, age=0.0, skinHex='f9e2d8'),
+                           browArch=0.0014, browHead=0.0012, browTail=0.0004, aoMin=0.82, tear=0.2, waterline='#e6bcb4'), iris=0.60, age=0.0, skinHex='f9dfcf'),
 }
 
 # ---------------------------------------------------------------- 符号化（鴻門の会 pack-head-assets.py と同じ delta-rle-v1）
@@ -601,7 +612,7 @@ def build_role(name, R0, src, E):
     spec = ROLES[name]; t0 = time.time()
     hi, lo = src[1], src[0]
     P1, info = cute(hi['P'], hi['T'], E, spec['cfg'], hi['U'])
-    P0, _ = cute(lo['P'], lo['T'], E, spec['cfg'], lo['U'])
+    P0, info0 = cute(lo['P'], lo['T'], E, spec['cfg'], lo['U'])
     eyes = info['eyes']
     # 眼球の半径：まぶた（見える面）に触れない大きさ
     Rn = R0 * info['eye_r']
@@ -620,7 +631,7 @@ def build_role(name, R0, src, E):
     up = mg[0]['upper']; top = float(up[:, 1].max() - eyes[0][1])
     open_a = -math.asin(min(0.95, (top + 0.0012) / (Rn * 1.03)))
     print('  %s: 目の半径 %.4f 上ふち %+.4f 開き角 %.3f  (%.1fs)' % (name, Rn, top, open_a, time.time() - t0))
-    out = dict(P1=P1, P0=P0, TU1=TU1, kinds1=kinds1, img=img, eyes=eyes, R=Rn, open=open_a, lid=lidc, margins=mg, info=info, look=look)
+    out = dict(P1=P1, P0=P0, N1=info['neutral'], N0=info0['neutral'], TU1=TU1, kinds1=kinds1, img=img, eyes=eyes, R=Rn, open=open_a, lid=lidc, margins=mg, info=info, look=look)
     TU0, kinds0 = atlas(P0, lo['T'], lo['U']); out['TU0'] = TU0
     return out
 
@@ -662,7 +673,10 @@ def export(results, src, path):
         for q, Pk in (('high', 'P1'), ('low', 'P0')):
             P = r[Pk][shared[q]['src']]
             qv = np.clip(np.round(P / QUANT), -32768, 32767).astype(np.int64)
-            head['lod'][q] = dict(skin=dict(v=shared[q]['n'], t=shared[q]['t'], p=pack16(qv.ravel(), 3), i='hf_' + q, uv='hf_' + q, encoding=dict(p='delta-rle-v1')))
+            # 表情なしへの差（ゲームで泣く・伏す姿勢のときに混ぜる。モーフ）
+            Nk = 'N1' if q == 'high' else 'N0'
+            dq = np.clip(np.round((r[Nk][shared[q]['src']] - P) / QUANT), -32768, 32767).astype(np.int64)
+            head['lod'][q] = dict(skin=dict(v=shared[q]['n'], t=shared[q]['t'], p=pack16(qv.ravel(), 3), dn=pack16(dq.ravel(), 3), i='hf_' + q, uv='hf_' + q, encoding=dict(p='delta-rle-v1', dn='delta-rle-v1')))
         img = r['img']   # 行 0 = v=0（Blender の画素の並びのまま保存すると、画像の下になる）
         head['tex']['high'] = jpeg_uri(img, 84, os.path.join(tmp, 'h.jpg'))
         head['tex']['low'] = jpeg_uri(downscale(img, 2), 82, os.path.join(tmp, 'lo.jpg'))

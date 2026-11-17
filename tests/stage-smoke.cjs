@@ -98,10 +98,12 @@ async function heian(browser) {
       const S = window.GENJI.Stage3D._state, f = S.figs[id][0];
       for (let i = 0; i < 40; i++) f.update(0.05, i * 0.05);
       const h = f.head, skin = h.skin, lash = h.lids.filter((l) => l.children.length).length;
-      return { role: f.headLook.role, uv: !!skin.geometry.attributes.uv, map: !!(skin.material.map && skin.material.map.image && skin.material.map.image.width >= 512), lids: h.lids.length, lash, open: h.open, sd: window.GENJI.Stage3D._probe().sd };
+      const St = window.GENJI.Stage3D, mo = skin.geometry.morphAttributes.position; St.pose(id, 'weep'); for (let i = 0; i < 40; i++) f.update(0.05, i * 0.05); const weep = skin.morphTargetInfluences ? skin.morphTargetInfluences[0] : 0; St.pose(id, 'sit'); for (let i = 0; i < 40; i++) f.update(0.05, i * 0.05);
+      return { morph: !!(mo && mo.length === 1), weep, role: f.headLook.role, uv: !!skin.geometry.attributes.uv, map: !!(skin.material.map && skin.material.map.image && skin.material.map.image.width >= 512), lids: h.lids.length, lash, open: h.open, sd: window.GENJI.Stage3D._probe().sd };
     }, id);
     assert.equal(r.role, WANT[id], id + ': 頭は ' + WANT[id]);
     assert.ok(r.uv && r.map, id + ': 肌の画像（UV つき）');
+    assert.ok(r.morph && r.weep > 0.5, id + ': 表情（微笑み）を泣く姿勢でゆるめる（' + r.weep + '）');
     assert.equal(r.lids, 2, id + ': まぶた 2 つ'); assert.equal(r.lash, 2, id + ': まつ毛 2 つ');
     assert.ok(r.open < -0.2 && r.open > -0.8, id + ': まぶたの開き角（' + r.open + '）');
     assert.ok(r.sd > 6, id + ': 絵が単色でない');

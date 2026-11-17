@@ -86,7 +86,9 @@
     if (d.c) { var c = decodeAttr(d.c, d.v * 3, false, d.encoding && d.encoding.c); col = new Float32Array(d.v * 3); for (i = 0; i < col.length; i++) col[i] = c[i] / 255; }
     var idx = decodeIdx(A.indices[d.i], d.t * 3, A.indexEncoding, d.v), uv = null;
     if (d.uv) { var uq = decodeAttr(A.uvs[d.uv], d.v * 2, true, 'delta-rle-v1', 2), uvv = new DataView(uq.buffer); uv = new Float32Array(d.v * 2); for (i = 0; i < uv.length; i++) uv[i] = uvv.getUint16(i * 2, true) / 65535; }
-    return (RAW[key] = { pos: pos, col: col, idx: idx, v: d.v, uv: uv });
+    var dn = null;   /* 表情（微笑み）なしへの差（モーフ） */
+    if (d.dn) { var dq = decodeAttr(d.dn, d.v * 3, true, 'delta-rle-v1'), dvv = new DataView(dq.buffer); dn = new Float32Array(d.v * 3); for (i = 0; i < dn.length; i++) dn[i] = dvv.getInt16(i * 2, true) * A.quantization; }
+    return (RAW[key] = { pos: pos, col: col, idx: idx, v: d.v, uv: uv, dn: dn });
   }
 
   /* ================= 色の道具 ================= */
@@ -252,6 +254,7 @@
     g.setAttribute('uv', new T.BufferAttribute(R.uv, 2));
     g.setIndex(new T.BufferAttribute(R.idx, 1));
     weldNormals(g); g.computeBoundingSphere(); g._gjShared = true;
+    if (R.dn) { g.morphAttributes.position = [new T.BufferAttribute(R.dn, 3)]; g.morphTargetsRelative = true; }
     return (GEO[key] = g);
   }
   /* 頭の表面の半径（縦の軸 x=0, z=-0.01 のまわり）を、高さと向きで引く表。髪の房を頭・耳の外へ沿わせるのに使う */
@@ -291,6 +294,8 @@
   /* 肌の材質：口（あご）を少し動かす uniform を差し込む。my は口の合わせ目の高さ */
   function skinMat(rough, my, tex) {
     var m = new T.MeshStandardMaterial({ vertexColors: !tex, map: tex || null, roughness: rough || 0.55, metalness: 0 });
+    if (tex) m.morphTargets = true;
+    var hq = !!K.HQ;
     var u = m.userData.jaw = { value: 0 }, um = { value: my == null ? -0.0435 : my };
     m.onBeforeCompile = function (sh) {
       sh.uniforms.uJaw = u; sh.uniforms.uMY = um;
@@ -298,12 +303,15 @@
         /* 肌：やわらかな暖かい補助光（影側が灰色・黄ばみに沈まない）と、輪郭のほのかな透け（皮膚の下の赤み）。
            白塗りにはせず、陰影は残す */
         sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>',
-          '#include <aomap_fragment>\n  { float facing = saturate(dot(normal, normalize(vViewPosition)));\n    float rimF = pow(1.0 - facing, 2.2);\n    reflectedLight.indirectDiffuse += diffuseColor.rgb * (0.16 + 0.30 * rimF) * vec3(1.0, 0.80, 0.80);\n    reflectedLight.directDiffuse *= vec3(1.0, 0.975, 0.985); }');
+          '#include <aomap_fragment>\n  { float facing = saturate(dot(normal, normalize(vViewPosition)));\n    float rimF = pow(1.0 - facing, 2.2);\n' +
+          (hq ? '    reflectedLight.indirectDiffuse += diffuseColor.rgb * (0.15 + 0.30 * rimF) * vec3(1.0, 0.84, 0.74);\n    reflectedLight.directDiffuse *= vec3(1.0, 0.985, 0.965); }'
+              /* 低画質はトーンマッピングなし・環境光が強く白っぽくなるので、暖かい桃色へ寄せて少し沈める */
+              : '    reflectedLight.indirectDiffuse *= vec3(0.93, 0.84, 0.77);\n    reflectedLight.directDiffuse *= vec3(0.98, 0.92, 0.86);\n    reflectedLight.indirectDiffuse += diffuseColor.rgb * 0.18 * rimF * vec3(1.0, 0.8, 0.7); }'));
       }
       sh.vertexShader = 'uniform float uJaw;\nuniform float uMY;\n' + sh.vertexShader.replace('#include <begin_vertex>',
         '#include <begin_vertex>\n  float jw = smoothstep(uMY + 0.0035, uMY - 0.0035, position.y) * (1.0 - smoothstep(0.018, 0.04, abs(position.x))) * smoothstep(0.035, 0.07, position.z);\n  jw *= 1.0 - smoothstep(uMY - 0.0365, uMY - 0.0665, position.y);\n  transformed.y -= uJaw * jw * 0.0045;\n  transformed.z -= uJaw * jw * 0.0012;');
     };
-    m.customProgramCacheKey = function () { return tex ? 'gj3skinT' : 'gj3skin'; };
+    m.customProgramCacheKey = function () { return tex ? (hq ? 'gj3skinT' : 'gj3skinTL') : 'gj3skin'; };
     return m;
   }
 
@@ -356,9 +364,9 @@
   }
   /* キャッチライト：瞳の右上に小さな光（照明によらず見える。まぶたの半球より内なので、まばたきでは隠れる） */
   var CATCHM = null;
-  function catchGeo(R, ir) {
-    var k = 'c' + R + '|' + ir; if (EYEG[k]) return EYEG[k];
-    var g = new T.CircleGeometry(ir * 0.17, 12), p = g.attributes.position, cx = ir * 0.36, cy = ir * 0.4, i;
+  function catchGeo(R, ir, two) {
+    var k = 'c' + R + '|' + ir + (two ? 'b' : ''); if (EYEG[k]) return EYEG[k];
+    var g = new T.CircleGeometry(ir * (two ? 0.085 : 0.17), 12), p = g.attributes.position, cx = ir * (two ? -0.34 : 0.36), cy = ir * (two ? -0.36 : 0.4), i;
     for (i = 0; i < p.count; i++) { var x = p.getX(i) * 1.15 + cx, y = p.getY(i) + cy; p.setXYZ(i, x, y, Math.sqrt(Math.max(0, R * R - x * x - y * y)) + 0.00045); }
     g.computeVertexNormals(); g._gjShared = true; return (EYEG[k] = g);
   }
@@ -398,6 +406,7 @@
       eg.add(new T.Mesh(irisGeoH(R, R * (H.anchors.iris || 0.5)), IRISM));
       if (!CATCHM) { CATCHM = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.82, depthWrite: false, fog: false }); CATCHM._gjShared = true; }
       var cm = new T.Mesh(catchGeo(R, R * (H.anchors.iris || 0.5)), CATCHM); cm.renderOrder = 3; eg.add(cm);
+      var cm2 = new T.Mesh(catchGeo(R, R * (H.anchors.iris || 0.5), true), CATCHM); cm2.renderOrder = 3; eg.add(cm2);
       var lid = new T.Mesh(new T.SphereGeometry(R * 1.03, seg, 10, 0, PI * 2, 0, PI / 2), lidM);
       if (e0.lash && e0.lash.length > 2) lid.add(new T.Mesh(lashGeo(e0, e0.open, H.anchors.child ? 0.55 : 1), LASHM));
       eg.add(lid); lids.push(lid);
@@ -488,10 +497,20 @@
       g.putImageData(im, 0, 0);
     }, false);
   }
+  /* 房の色の画像：細い毛の筋に、根元寄り（頭頂の高さ）の艶の帯を重ねる。画像の上が毛先 */
+  function lockTex() {
+    return ctex('lockC', 128, 256, function (g, w, h) {
+      var r = K.rng(23), i;
+      g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, h);
+      for (i = 0; i < 260; i++) { var x = r() * w, c = (70 + r() * 90) | 0; g.strokeStyle = 'rgba(' + c + ',' + c + ',' + c + ',' + (0.3 + r() * 0.4) + ')'; g.lineWidth = 0.5 + r(); g.beginPath(); g.moveTo(x, 0); g.lineTo(x + (r() - 0.5) * 3, h); g.stroke(); }
+      var gr = g.createLinearGradient(0, h * 0.6, 0, h); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.5, 'rgba(255,240,225,0.42)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, h * 0.6, w, h * 0.4);
+    }, false);
+  }
   var LOCKM = {};
   function lockMat(hex) {
     if (LOCKM[hex]) return LOCKM[hex];
-    var m = hairMat(hex, true).clone(); m.alphaMap = strandAlpha(); m.alphaTest = 0.4; m._gjShared = true;
+    var m = hairMat(hex, true).clone(); m.map = lockTex(); m.map.encoding = T.sRGBEncoding; m.alphaMap = strandAlpha(); m.alphaTest = 0.4; m._gjShared = true;
     return (LOCKM[hex] = m);
   }
 
@@ -594,7 +613,7 @@
       L.role = hr; L.tone = '#' + root.GJ3_HD_ASSETS.heads[hr].skin;
       L.hair = kind === 'ama' ? 'ama' : hr === 'girl' ? 'bob' : 'long';
       L.extra = kind === 'chigo' ? 0.9 : 0;
-      L.shape = HSHAPE[id] || null;
+      L.shape = HSHAPE[id] || null; L.hairCol = '#1d1512';
       return L;
     }
     if (L.role === 'female') {
@@ -645,7 +664,7 @@
     this.mat = new T.MeshStandardMaterial({ vertexColors: true, map: silkTex(), bumpMap: silkBump(), bumpScale: 0.0004, roughness: 0.74, metalness: 0, side: T.DoubleSide });
     this.mat.emissive = new T.Color(0, 0, 0);
     this.hmat = hairMat(this.fem || this.child ? '#120f14' : '#17131a', true);
-    if (isHeian(this.headLook.role)) this.hmat = lockMat('#120f14');
+    if (isHeian(this.headLook.role)) this.hmat = lockMat('#1d1512');
     this.root = new T.Group(); this.root.scale.setScalar(this.scale);
     this.pivot = new T.Group(); this.root.add(this.pivot);
     this.upper = new T.Group(); this.pivot.add(this.upper);
@@ -929,8 +948,26 @@
     var geo = heianGeo(this.headLook.role, 'low', this.headLook), R = surfTable(geo), white = lin('#ffffff');
     function hp(a, y, off) { var rr = R(y, a) + off; return [Math.sin(a) * rr, y, Math.cos(a) * rr - 0.01]; }
     function outw(p) { return [p.x, 0, p.z + 0.01]; }
-    var girl = this.headLook.role === 'girl', ama = hs === 'ama';
+    var girl = this.headLook.role === 'girl', ama = hs === 'ama', A = root.GJ3_HD_ASSETS.heads[this.headLook.role], ey = A.anchors.eyes[0].center[1];
+    if (girl && (hs === 'ougi' || hs === 'mid')) {
+      /* 目刺し（めざし）：子どもの前髪を眉の高さで切りそろえる（平安の童の髪。肩で切る振分髪と合わせて）。
+         根元は髪の殻の下に隠し、生え際から額に沿って下ろす。毛先は細い毛に分かれる */
+      var nf = 9, endY = ey + 0.0215;
+      for (var f = 0; f < nf; f++) {
+        var a = (f / (nf - 1) - 0.5) * 1.3, rf = r(), e2 = endY - 0.002 * rf - 0.004 * Math.pow(Math.abs(a) / 0.65, 2);
+        var pf = [hp(a * 0.55, 0.09, 0.003), hp(a * 0.85, 0.074, 0.0045), hp(a, (0.074 + e2) / 2, 0.004), hp(a * 1.02, e2, 0.0035)];
+        strip(M, pf, [0.012, 0.021, 0.022, 0.02], 0.0015, outw, 10, white, fadeEnd(0.1), 3);
+      }
+    }
     [-1, 1].forEach(function (sd) {
+      if (!girl && !ama) {
+        /* こめかみの細い後れ毛（若い女性・大人の女性） */
+        for (var t2 = 0; t2 < 2; t2++) {
+          var a0 = sd * (0.8 + t2 * 0.08), rt = r();
+          var pw = [hp(a0, 0.066, 0.0035), hp(a0 + sd * 0.12, 0.045, 0.0055), hp(a0 + sd * 0.18, 0.015 - rt * 0.006, 0.006), hp(a0 + sd * 0.16, -0.012 - rt * 0.01, 0.0055)];
+          strip(M, pw, [0.004, 0.006, 0.005, 0.002], 0.0006, outw, 10, white, fadeEnd(0.35), 2);
+        }
+      }
       /* 鬢削ぎ：前の 2 房（頬の外の縁をおおい、毛先はあごの線へ内に寄る） */
       var cut = girl ? -0.045 : ama ? -0.03 : -0.07;
       [0, 1].forEach(function (j) {
@@ -1165,6 +1202,8 @@
       /* 口：話し手だけ、音節ほどの速さで小さく開け閉め */
       var jw = this.spk > 0.05 ? this.spk * Math.max(0, Math.sin(t * 13 + Math.sin(t * 3.1) * 2)) * (0.6 + 0.4 * Math.sin(t * 2.3)) : 0;
       h.jaw.value = jw;
+      var inf = h.skin.morphTargetInfluences;
+      if (inf) { var neu = P.anim === 'weep' || this.pose === 'lie' || this.pose === 'bow' || this.pose === 'pray' || this.pose === 'write' ? 1 : 0; inf[0] += (neu - inf[0]) * (1 - Math.exp(-dt * 4)); }
     }
     var e = this.spk * 0.06; this.mat.emissive.setRGB(e, e * 0.9, e * 0.62);
   };
