@@ -124,7 +124,10 @@
       var im = g.createImageData(w, h), d = im.data, x, y, r = K.rng(5);
       for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
         var i = (y * w + x) * 4, weave = ((x + y) % 2 ? 3 : -3) + (y % 4 < 2 ? 2 : -2), dia = Math.abs(((x + y) % 64) - 32) + Math.abs(((x - y + 256) % 64) - 32);
-        var hishi = dia > 29 && dia < 32 ? -6 : 0, n = (r() - 0.5) * 6, v = 240 + weave + hishi + n;
+        /* 有職文様：菱の格子と、菱の中の小さな花菱（四弁）。白っぽく浮く織りの文様として、ごく控えめに */
+        var cx2 = ((x % 64) + 64) % 64 - 32, cy2 = ((y % 64) + 64) % 64 - 32, pr = Math.abs(cx2) + Math.abs(cy2);
+        var petal = pr < 9 && (Math.abs(cx2) < 2.5 || Math.abs(cy2) < 2.5) ? 1 : 0, kk = pr > 3 && pr < 9 && Math.abs(Math.abs(cx2) - Math.abs(cy2)) < 2.2 ? 1 : 0;
+        var hishi = dia > 28 && dia < 32 ? -11 : 0, flower = (petal || kk) ? 9 : 0, n = (r() - 0.5) * 6, v = 236 + weave + hishi + flower + n;
         d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
       }
       g.putImageData(im, 0, 0);
@@ -458,8 +461,8 @@
       if (!male && Math.abs(x) > 0.06 && y < 0.06) th += 0.006 * smooth(0.06, 0.08, Math.abs(x));
       th *= 0.4 + 0.6 * al[j];
       pos.push(x + nx * th, y + ny * th, z + nz * th); nor.push(nx, ny, nz);
-      var a = Math.atan2(x, z + 0.02);
-      uv.push(a / PI * 4, (y + 0.1) * 6);
+      if (hlook) uv.push((z + 0.12) * 30, Math.atan2(Math.abs(x), y + 0.005) / PI * 3.2);   /* 新しい頭：中央の分け目から左右へ下りる流れ */
+      else { var a = Math.atan2(x, z + 0.02); uv.push(a / PI * 4, (y + 0.1) * 6); }
       var ring = hlook ? 1 + 0.9 * Math.exp(-Math.pow((y - 0.085 + 0.25 * Math.max(0, -z - 0.02)) / 0.012, 2)) * smooth(-0.07, 0.02, z) : 1;
       col.push(ring, ring, ring, al[j]);
       return (map[j] = pos.length / 3 - 1);
@@ -473,6 +476,35 @@
     g.setAttribute('color', new T.Float32BufferAttribute(col, 4));
     g.setIndex(idx); g.computeVertexNormals(); g._gjShared = true;
     return (GEO[key] = g);
+  }
+  /* 毛のほつれの透明度（縦に長い細い毛が、ところどころ途切れる。くり返して貼る） */
+  function fuzzAlpha() {
+    return ctex('fuzzA', 128, 256, function (g, w, h) {
+      var im = g.createImageData(w, h), d = im.data, r = K.rng(41), x, y, segs = [];
+      for (x = 0; x < w; x++) { var L = []; for (var k = 0; k < 3; k++) { var s0 = r(); L.push([s0, s0 + 0.18 + r() * 0.5]); } segs.push(L); }
+      for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+        var v = (y + 0.5) / h, on = 0, i = (y * w + x) * 4;
+        segs[x].forEach(function (sg) { var vv = v < sg[0] ? v + 1 : v; if (vv >= sg[0] && vv <= sg[1]) on = 1; });
+        var a = on ? 230 : 0; d[i] = d[i + 1] = d[i + 2] = a; d[i + 3] = 255;
+      }
+      g.putImageData(im, 0, 0);
+    });
+  }
+  var FUZZM = {};
+  function fuzzMat(hex) {
+    if (FUZZM[hex]) return FUZZM[hex];
+    var m = new T.MeshStandardMaterial({ color: lin(hex), roughness: 0.42, metalness: 0, map: hairTex(), alphaMap: fuzzAlpha(), alphaTest: 0.5, side: T.DoubleSide, vertexColors: true });
+    m._gjShared = true; return (FUZZM[hex] = m);
+  }
+  function fuzzShellGeo(base) {
+    if (base._fuzz) return base._fuzz;
+    var g = base.clone(), p = g.attributes.position, n = g.attributes.normal, c = g.attributes.color, i;
+    for (i = 0; i < p.count; i++) {
+      var k = 0.0016 * c.getW(i);
+      p.setXYZ(i, p.getX(i) + n.getX(i) * k, p.getY(i) + n.getY(i) * k, p.getZ(i) + n.getZ(i) * k);
+      c.setW(i, Math.min(1, c.getW(i) * 1.4));
+    }
+    g._gjShared = true; return (base._fuzz = g);
   }
   var HAIRM = {};
   function hairMat(hex, gloss) {
@@ -526,6 +558,10 @@
     if (hk !== 'shaved' && hk !== 'none') {
       var shell = new T.Mesh(hairShellGeo(role, q, hz ? 0 : look.child || 0, !fem ? 'male' : hk === 'ama' || hk === 'bob' ? 'bob' : 'long', hz ? look : null), hairMat(look.hairCol || '#120f14', fem));
       shell.castShadow = true; shell.renderOrder = 1; g.add(shell);
+      if (hz && q === 'high' && hk !== 'shaved') {   /* 寄ったときだけ、外へ毛先がほつれる殻を 1 枚（粗い網目から作るので軽い） */
+        var fz = new T.Mesh(fuzzShellGeo(hairShellGeo(role, 'low', 0, hk === 'ama' || hk === 'bob' ? 'bob' : 'long', look)), fuzzMat(look.hairCol || '#1d1512'));
+        fz.renderOrder = 1; g.add(fz);
+      }
     }
     if (!fem) {
       var brow = look.brow !== false && partGeo(role, q, 'brow', look.hairCol || '#211b1c');
@@ -648,8 +684,16 @@
     this.id = id; this.kd = kd; this.kind = look.kind; this.hd = true;
     var cols = (look.colors || ['#888']).slice();
     if (opts.variant) cols = cols.map(function (c, i) { var k = new T.Color(c); k.offsetHSL(0.035 * opts.variant * (i % 2 ? -1 : 1), 0, i ? 0 : -0.03 * opts.variant); return '#' + k.getHexString(); });
-    this.cols = cols;
     this.fem = kd.fem && id !== 'ichinomiya';
+    /* 女房装束・小袿：重ねの色目を 6 枚に（隣り合う色のあいだを補って匂のぼかしに）。袖口・襟・裾に細い段で見せる */
+    this.nLay = this.fem ? Math.min(cols.length, kd.layers || 3) : 2;
+    if (this.fem && (look.kind === 'juni' || look.kind === 'kouchiki') && cols.length >= 3) {
+      var ex = [], cc = new T.Color();
+      for (var ci = 0; ci < cols.length - 1 && ex.length < 6; ci++) { ex.push(cols[ci]); if (ex.length < 6 && ci < 2) { cc.set(cols[ci]).lerp(new T.Color(cols[ci + 1]), 0.5); ex.push('#' + cc.getHexString()); } }
+      while (ex.length < 6) ex.push(cols[Math.min(cols.length - 1, ex.length)]);
+      cols = ex.slice(0, 6); this.nLay = 6;
+    }
+    this.cols = cols;
     this.child = { shojo: 1, warawa: 1, chigo: 1 }[look.kind] ? 1 : 0;
     this.seed = (opts.seed || 0) + id.length * 1.7;
     this.q = 'high'; this.tier = opts.quality === 'low' ? 'low' : 'high';   /* low：人数・網目を控えめに（頭は寄ったときだけ細かく） */
@@ -740,7 +784,7 @@
   };
   /* 女・僧・子：前で合わせる襟。外の衣ほど V が深く、内へ行くほど首に近い。襲の色が段に見える */
   HFig.prototype._vCollar = function (M) {
-    var self = this, c = this.cols, n = this.fem ? Math.min(c.length, (this.kd.layers || 3)) : 2, layers = [], i;
+    var self = this, c = this.cols, n = this.fem ? this.nLay : 2, layers = [], i;
     for (i = 0; i < n; i++) layers.push(c[i]);
     if (!this.fem || this.kind === 'ama') layers = [c[0], c[1] || c[0]];
     layers.push('#f6f2ea');                          /* いちばん内の白（単・小袖） */
@@ -788,7 +832,7 @@
   /* ---------- 袖（腕ごと動く）。袖口に襲の色目、袂は下へ垂れる ---------- */
   HFig.prototype._sleeve = function (side, P) {
     var M = new Mesher(), self = this, c = this.cols, fem = this.fem, kd = this.kd;
-    var n = fem ? Math.min(c.length, kd.layers || 3) : 2, L = fem ? 0.36 : 0.39, i;
+    var n = fem ? this.nLay : 2, L = fem ? 0.36 : 0.39, i;
     var layers = []; for (i = 0; i < n; i++) layers.push(fem ? c[i] : (i ? (this.kind === 'kariginu' ? c[1] : '#f4efe2') : c[0]));
     if (this.kind === 'sou' || this.kind === 'ama') layers = [c[0], '#f2eee6'];
     /* 重力の向きを腕の座標へ（姿勢の目標値で） */
@@ -797,10 +841,12 @@
     var hi = this.tier !== 'low' && !this.far, seed = this.seed;
     /* 袖の面の 1 点：th＝腕のまわりの角度、vv＝肩 0 → 袖口 1。ひだ（縦のたるみ）・袖口への広がり・波打つ袖口の縁・袂の垂れ */
     function pt(th, vv, shrink, len, off, o) {
-      var rx = K.lerp(0.055, fem ? 0.094 : 0.082, smooth(0, 0.55, vv)) - shrink, rz = K.lerp(0.068, fem ? 0.14 : 0.127, smooth(0, 0.65, vv)) - shrink;
+      /* 肩口（vv<0）：表の衣を首の方へ少し延ばし、胴の肩の線となだらかにつなぐ（袖の付け根の段差を消す） */
+      var cap = vv < 0 ? -vv / 0.12 : 0; vv = Math.max(0, vv);
+      var rx = K.lerp(0.055, fem ? 0.094 : 0.082, smooth(0, 0.55, vv)) - shrink - 0.01 * cap, rz = K.lerp(0.068, fem ? 0.14 : 0.127, smooth(0, 0.65, vv)) - shrink - 0.004 * cap;
       var fl = 1 + 0.07 * smooth(0.8, 1, vv);
       var fold = (0.011 * Math.sin(th * 4 + seed + side + vv * 1.6) + 0.006 * Math.sin(th * 7 + seed * 2 - vv * 2.2) + 0.0028 * Math.sin(th * 13 + side * 3 + seed)) * smooth(0.12, 0.9, vv);
-      var x = (rx * fl + fold + off) * Math.sin(th), z = (rz * fl + fold + off) * Math.cos(th), y = -len * vv;
+      var x = (rx * fl + fold + off) * Math.sin(th) - 0.04 * cap * cap, z = (rz * fl + fold + off) * Math.cos(th), y = -len * vv + 0.043 * cap;
       /* 袂：腕の下側（重力の側）に平たい袋になって垂れる。腕を下ろすと袖口の先へ伸びる */
       var dn = Math.max(0, -Math.cos(th)), sgz = Math.abs(gz), drop = bag * smooth(0.15, 1, vv) * Math.pow(dn, 0.6);
       var hem = (0.012 * Math.sin(th * 3 + seed) + 0.006 * Math.sin(th * 5 + side * 2)) * smooth(0.82, 1, vv);
@@ -808,8 +854,9 @@
       return o;
     }
     layers.forEach(function (hex, li) {
-      var col = lin(hex), len = L + li * 0.014, shrink = li * 0.005, v0 = li ? 0.55 : 0;
-      M.surf(li ? 24 : (hi ? 32 : 28), li ? 6 : (hi ? 14 : 12), function (u, v, o) { pt(u * PI * 2, K.lerp(v0, 1, v), shrink, len, 0, o); }, col, 3, 2, true);   /* 内の衣は袖口の近くだけなので粗く */
+      /* 重ねが多いとき（6 枚）は段を細く。内の衣は袖口の近くだけなので粗く */
+      var many = n > 4, col = lin(hex), len = L + li * (many ? 0.0085 : 0.014), shrink = li * (many ? 0.0031 : 0.005), v0 = li ? (many ? 0.8 : 0.55) : (fem ? -0.12 : 0);
+      M.surf(li ? (many ? 20 : 24) : (hi ? 30 : 28), li ? (many ? 2 : 6) : (hi ? 14 : 13), function (u, v, o) { pt(u * PI * 2, K.lerp(v0, 1, v), shrink, len, 0, o); }, col, 3, 2, true);
     });
     /* 狩衣：袖口の袖括（そでぐくり）の紐を縁に通す */
     if (this.kind === 'kariginu') {
@@ -848,7 +895,7 @@
     var outer = lin(c[0]);
     var hak = fem ? (kind === 'ama' ? lin('#6d6863') : kind === 'shojo' || kind === 'warawa' || kind === 'chigo' ? null : lin(this.id === 'murasaki' ? '#5a2440' : '#a3202a')) : lin(kind === 'kariginu' ? (c[2] || c[1]) : (c[1] || c[0]));
     if (kind === 'sou') hak = null;
-    var nl = fem ? Math.min(c.length, kd.layers || 3) : 1;
+    var nl = fem ? this.nLay : 1, many = nl > 4;
     var openW = function (v) { return fem ? (0.1 + 0.36 * v) : (kind === 'kariginu' ? 0.35 + 0.55 * v : 0.2 + 0.4 * v); };
     function S(th, v, off, o) {
       var r0x = topRx, r0z = topRz, R = foot(th), t = Math.pow(v, stand ? 1.25 : 0.7);
@@ -875,7 +922,7 @@
           var col = lin(c[i]);
           [-1, 1].forEach(function (sd) {
             M.surf(1, 20, function (u, v, o) {
-              var vv = 0.04 + v * 0.96, w = openW(vv), th = sd * (w - (i) * 0.026 + u * 0.026);
+              var st = many ? 0.017 : 0.026, vv = 0.04 + v * 0.96, w = openW(vv), th = sd * (w - (i) * st + u * st);
               S(th, vv, -0.0015 * i, o);
             }, col, 1, 4);
           });
@@ -885,8 +932,8 @@
     /* 裾の重なり：内の衣ほど外へ少しずつはみ出す */
     for (i = 1; i < nl; i++) {
       (function (i) {
-        var col = lin(c[i]), k = 1 + 0.04 * i, w = hak ? openW(1) - i * 0.026 : 0;
-        M.surf(88, 2, function (u, v, o) {
+        var col = lin(c[i]), k = 1 + (many ? 0.026 : 0.04) * i, w = hak ? openW(1) - i * (many ? 0.017 : 0.026) : 0;
+        M.surf(many ? 60 : 88, many ? 1 : 2, function (u, v, o) {
           var th = w + u * (PI * 2 - 2 * w), R = foot(th) * K.lerp(0.95, k, v) + (0.016 * Math.sin(th * 11 + self.seed) + 0.009 * Math.sin(th * 23 + self.seed * 3));
           o[0] = R * Math.sin(th); o[2] = R * Math.cos(th); o[1] = 0.016 - i * 0.003 - v * 0.006;
         }, col, 10, 1, !hak);
@@ -1058,7 +1105,9 @@
       zs.forEach(function (p, k3) { if (k3 % stepN === 0 || k3 === zs.length - 1) spine.push(p); });
       var tail = spine[spine.length - 1]; spine.push([0.02, 0.022, tail[2] - (P.st ? 0.12 : 0.28)]);
     }
-    var widths = P.lie ? [0.14, 0.26, 0.32, 0.3, 0.12] : [0.14, 0.18, 0.22, 0.25, 0.28, 0.3, 0.32, 0.34, 0.34, 0.3];
+    var hzL = isHeian(this.headLook.role);
+    /* 新しい頭：肩で広がり、背の上の方でゆるく束ねて（元結）、そこから床へ広がる */
+    var widths = P.lie ? [0.14, 0.26, 0.32, 0.3, 0.12] : hzL ? [0.14, 0.21, 0.2, 0.115, 0.125, 0.17, 0.22, 0.26, 0.29, 0.31, 0.3] : [0.14, 0.18, 0.22, 0.25, 0.28, 0.3, 0.32, 0.34, 0.34, 0.3];
     /* 下地の一枚（房のすき間から下の衣が透けないように） */
     strip(M, spine.map(function (q) { return [q[0], q[1] - 0.002, q[2] + 0.002]; }), widths.map(function (w) { return w * 0.92; }), 0.004, [0, 1, -0.4], 36, white, function (u, v) { return 1 - smooth(0.8, 0.97, v); }, 4);
     for (j = 0; j < N; j++) {
@@ -1068,6 +1117,14 @@
       strip(M, pts, pts.map(function (q, k) { var t = k / (pts.length - 1); return (widths[Math.min(widths.length - 1, Math.round(t * (widths.length - 1)))] / N) * 2.2; }), 0.004, [0, 1, -0.4], 36, white, function (u, v) { return 1 - smooth(0.86, 1, v); }, 3);
     }
     this.longHair = this._mesh(this.pivot, M.build(), this.hmat); this.longHair.renderOrder = 2;
+    if (this.motoyui) { this.motoyui.geometry.dispose(); this.pivot.remove(this.motoyui); this.motoyui = null; }
+    if (hzL && !P.lie && spine.length > 4) {   /* 元結（もとゆい）：束ねたところに白い紙の紐 */
+      var tt = 0.3 * (spine.length - 1), k0 = Math.floor(tt), fr = tt - k0, q0 = spine[k0], q1 = spine[Math.min(spine.length - 1, k0 + 1)];
+      var c0 = new T.Vector3(K.lerp(q0[0], q1[0], fr), K.lerp(q0[1], q1[1], fr), K.lerp(q0[2], q1[2], fr)), dir = new T.Vector3(q1[0] - q0[0], q1[1] - q0[1], q1[2] - q0[2]).normalize();
+      var bg = new T.CylinderGeometry(1, 1, 0.014, 18, 1, true); bg.scale(0.068, 1, 0.016);
+      var bm = new T.Mesh(bg, new T.MeshStandardMaterial({ color: lin('#f3eee4'), roughness: 0.8, side: T.DoubleSide }));
+      bm.position.copy(c0); bm.position.z -= 0.006; bm.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir); this.pivot.add(bm); this.motoyui = bm;
+    }
   };
 
 
@@ -1078,10 +1135,17 @@
       var gr = g.createLinearGradient(0, 0, 0, h);
       if (fem) { gr.addColorStop(0, '#f1e3b4'); gr.addColorStop(1, '#d9b96a'); } else { gr.addColorStop(0, '#f3ecdc'); gr.addColorStop(1, '#e2d6bb'); }
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
-      if (fem) {   /* 金地に霞と松・桜の絵 */
-        g.fillStyle = 'rgba(255,255,255,.55)'; for (i = 0; i < 5; i++) { g.beginPath(); g.ellipse(r() * w, 20 + r() * 50, 40, 7, 0, 0, PI * 2); g.fill(); }
-        g.fillStyle = '#4c7a5a'; for (i = 0; i < 12; i++) { g.beginPath(); g.arc(r() * w, 70 + r() * 40, 5 + r() * 4, 0, PI * 2); g.fill(); }
-        g.fillStyle = '#e9a3b4'; for (i = 0; i < 26; i++) { g.beginPath(); g.arc(r() * w, 40 + r() * 70, 2 + r() * 2, 0, PI * 2); g.fill(); }
+      if (fem) {   /* 金地に、すやり霞（白い角の丸い帯）・松の枝・桜の花（五弁）の絵 */
+        for (i = 0; i < 260; i++) { g.fillStyle = 'rgba(255,236,170,' + (0.15 + r() * 0.25) + ')'; g.fillRect(r() * w, r() * h, 3 + r() * 6, 3 + r() * 6); }   /* 金箔の切箔 */
+        g.fillStyle = 'rgba(255,255,250,.72)';
+        [[20, 26, 120], [150, 40, 96], [60, 92, 130]].forEach(function (b) { var x0 = b[0], y0 = b[1], L = b[2]; g.beginPath(); g.moveTo(x0 + 8, y0); g.lineTo(x0 + L - 8, y0); g.quadraticCurveTo(x0 + L, y0, x0 + L, y0 + 8); g.quadraticCurveTo(x0 + L, y0 + 16, x0 + L - 8, y0 + 16); g.lineTo(x0 + 8, y0 + 16); g.quadraticCurveTo(x0, y0 + 16, x0, y0 + 8); g.quadraticCurveTo(x0, y0, x0 + 8, y0); g.fill(); });
+        g.strokeStyle = '#5b4632'; g.lineWidth = 3; g.beginPath(); g.moveTo(40, 120); g.bezierCurveTo(80, 96, 120, 108, 170, 78); g.stroke();   /* 松の枝 */
+        g.fillStyle = '#3f6e4e'; for (i = 0; i < 9; i++) { var px = 60 + i * 13, py = 104 - i * 3 + (r() - 0.5) * 8; g.beginPath(); g.ellipse(px, py, 12, 5, -0.2, 0, PI * 2); g.fill(); }
+        for (i = 0; i < 9; i++) {   /* 桜：五弁の花 */
+          var fx = 30 + r() * 200, fy = 50 + r() * 60, fr = 4 + r() * 2;
+          g.fillStyle = '#f2b8c6'; for (var pq = 0; pq < 5; pq++) { var an = pq / 5 * PI * 2; g.beginPath(); g.arc(fx + Math.cos(an) * fr, fy + Math.sin(an) * fr, fr * 0.75, 0, PI * 2); g.fill(); }
+          g.fillStyle = '#d9606e'; g.beginPath(); g.arc(fx, fy, fr * 0.35, 0, PI * 2); g.fill();
+        }
       } else { g.strokeStyle = '#6b7f9a'; g.lineWidth = 2; g.beginPath(); g.moveTo(10, 90); g.bezierCurveTo(80, 40, 160, 110, 246, 50); g.stroke(); }
       g.fillStyle = 'rgba(80,60,30,.35)'; for (i = 0; i < w; i += 9) g.fillRect(i, 0, 1, h);   /* 檜の板の継ぎ目 */
     }, false);

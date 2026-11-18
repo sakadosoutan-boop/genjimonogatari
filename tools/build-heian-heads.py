@@ -216,6 +216,20 @@ def cute(P, T, E, cfg, U=None):
     wq = smooth(-0.088, -0.106, P[:, 1]) * smooth(0.0, 0.0001, P[:, 1] - bottom + 1)   # 首の下ほど強く
     k = np.where(r > 1, 1 / np.maximum(r, 1e-6), 1.0)
     P[:, 0] = dx * (1 + (k - 1) * wq); P[:, 2] = cz + dz * (1 + (k - 1) * wq)
+    # 9b) 目もと・鼻筋（表情ではない形）：涙袋（下まぶたのすぐ下のふくらみ）、二重の折り目のくぼみ、やわらかく低めの鼻筋
+    exA, eyA, ezA = abs(eyes[0][0]), eyes[0][1], eyes[0][2]
+    if c.get('tearbag') or c.get('fold'):
+        N = normals(P, T); x, y, z = P[:, 0], P[:, 1], P[:, 2]; dxe = np.abs(x) - exA
+        if c.get('tearbag'):
+            wt = gauss(dxe, 0.0085) * gauss(y - (eyA - c.get('tb_y', 0.0098)), 0.0017) * smooth(ezA - 0.002, ezA + 0.006, z)
+            P += N * (c['tearbag'] * wt)[:, None]
+        if c.get('fold'):
+            yc2 = eyA + c.get('fold_y', 0.0088) * np.sqrt(np.clip(1 - (dxe / 0.0175) ** 2, 0, 1))
+            wf2 = np.exp(-((y - yc2) / 0.0007) ** 2) * gauss(dxe + 0.002, 0.011) * smooth(ezA - 0.002, ezA + 0.006, z) * (y > eyA)
+            P -= N * (c['fold'] * wf2)[:, None]
+    if c.get('nose_bridge'):
+        x, y, z = P[:, 0], P[:, 1], P[:, 2]
+        P[:, 2] += c['nose_bridge'] * gauss(x, 0.0075) * smooth(noseY + 0.004, noseY + 0.014, y) * (1 - smooth(eyA + 0.004, eyA + 0.016, y)) * smooth(0.07, 0.085, z)
     # 10) 表情（最後の段）：やわらかな微笑み。ここまでの位置を「表情なし」として残し、ゲームでは泣く・伏す姿勢のときにそちらへ戻す
     P0n = P.copy()
     x, y, z = P[:, 0], P[:, 1], P[:, 2]
@@ -543,12 +557,12 @@ def lash_img(W=256, H=64, seed=7):
 SKIN = '#f3d5c2'
 ROLES = {
     # 若い女性：桐壺の更衣・藤壺・弘徽殿の女御・女房たち
-    'lady': dict(cfg=dict(face_y=0.84, eye_x=1.40, eye_y=1.36, eye_r=1.24, eye_tilt=0.0022, lid_drop=0.0016, inner=0.001, nose=0.74, nose_w=0.84, nose_lift=-0.0006,
-                          cheek=0.0046, cheek_low=0.0018, jaw=0.17, chin=0.0022, chin_round=1.15, lips_w=0.80, lips_full=-0.0005, lower_full=0.0007, smile=0.0040, smile_back=0.0009, cheek_raise=0.0030, lower_lid=0.0030, mouth_back=0.0026,
-                          forehead=0.0032, neck=0.12),
-                 look=dict(skin='#f8dccb', pink='#f0a89c', blush=0.42, blushCol='#f2a097', lip='#d0566a', lipA=0.76, lipW=0.0150, bow=0.0021, lowerH=0.0080, smileP=0.0019, lipHi=0.16, hair='long',
-                           linerW=1.85, wing=0.0028, crease=0.0028, creaseA=0.55, shadow='#e3a3a0', shadowA=0.3, browY=0.0205, browW=0.0026, browA=0.62, browCol='#3a2823',
-                           browArch=0.0016, browHead=0.0010, browTail=0.0008, aoMin=0.8, tear=0.26, waterline='#e2b4ac'), iris=0.58, age=0.0, skinHex='f8dccb'),
+    'lady': dict(cfg=dict(face_y=0.82, eye_x=1.46, eye_y=1.46, eye_r=1.28, eye_tilt=0.0022, lid_drop=0.0016, inner=0.001, nose=0.72, nose_w=0.84, nose_lift=0.0003, nose_bridge=-0.0013,
+                          cheek=0.0052, cheek_low=0.0018, jaw=0.17, chin=0.0022, chin_round=1.15, lips_w=0.80, lips_full=0.0001, lower_full=0.0010, smile=0.0048, smile_back=0.0010, cheek_raise=0.0036, lower_lid=0.0030, mouth_back=0.0026,
+                          forehead=0.0032, neck=0.12, tearbag=0.0010, tb_y=0.0102, fold=0.0005, fold_y=0.0095),
+                 look=dict(skin='#f8dccb', pink='#f0a89c', blush=0.44, blushCol='#f4a09a', blushX=0.016, blushY=0.016, blushR=0.015, lip='#da727c', lipA=0.72, lipW=0.0152, bow=0.0025, lowerH=0.0086, smileP=0.0022, lipHi=0.12, hair='long',
+                           linerW=1.85, wing=0.0028, crease=0.0034, creaseA=0.78, shadow='#e3a3a0', shadowA=0.3, browY=0.0205, browW=0.0026, browA=0.62, browCol='#3a2823',
+                           browArch=0.0016, browHead=0.0010, browTail=0.0008, aoMin=0.8, tear=0.26, waterline='#e2b4ac'), iris=0.60, age=0.0, skinHex='f8dccb'),
     # 大人の女性：母北の方・少納言の乳母（同じ系統で年相応に。可愛さの変形を弱め、化粧も控えめ）
     'woman': dict(cfg=dict(face_y=0.91, eye_x=1.20, eye_y=1.15, eye_r=1.10, lid_drop=0.0020, nose_w=0.9, smile=0.0013, smile_back=0.0004, cheek_raise=0.0008, lower_lid=0.0006, mouth_back=0.001, cheek=0.0024, jaw=0.09, chin=0.0018,
                            nose=0.88, lips_w=0.9, lips_full=0.0006, age=0.35),
@@ -559,7 +573,7 @@ ROLES = {
                 look=dict(skin='#f4e0d4', blush=0.08, lip='#b06a6c', lipA=0.45, liner=0.45, creaseA=0.5, shadowA=0.12, browA=0.5, browCol='#4a3a34', age=0.85, tear=0.0, aoMin=0.68, hair='bob'), age=0.9, skinHex='f4e0d4'),
     # 少女・子ども：若紫（十歳ほど）・犬君・童べ・幼子。幼く清らかに（化粧はしない）
     'girl': dict(cfg=dict(face_y=0.78, eye_x=1.46, eye_y=1.44, eye_r=1.30, eye_tilt=0.0008, lid_drop=0.0011, inner=0.0006, nose=0.62, nose_w=0.80, nose_lift=-0.0004,
-                          cheek=0.0055, cheek_low=0.0030, jaw=0.15, chin=0.0040, chin_round=1.4, lips_w=0.72, lips_full=-0.0006, lower_full=0.0003, smile=0.0044, smile_back=0.0009, cheek_raise=0.0034, lower_lid=0.0032, mouth_back=0.0024,
+                          cheek=0.0050, cheek_low=0.0022, jaw=0.15, chin=0.0040, chin_round=1.4, lips_w=0.76, lips_full=-0.0009, lower_full=0.0003, smile=0.0044, smile_back=0.0009, cheek_raise=0.0034, lower_lid=0.0032, mouth_back=0.0024,
                           neck=0.22, forehead=0.0060),
                  look=dict(skin='#f9dfcf', pink='#f2aa9e', blush=0.46, blushCol='#f4a49a', blushR=0.020, blushY=0.024, lip='#e0868a', lipA=0.42, lipW=0.0128, bow=0.0012,
                            lowerH=0.0072, smileP=0.0024, hair='bob', liner=0.5, linerW=1.1, creaseA=0.3, shadowA=0.0, browA=0.36, browW=0.0024, browCol='#5a3e30', browY=0.0215,
