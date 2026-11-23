@@ -160,6 +160,8 @@
       c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 1; c.far = 160; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
     }
     sc.add(sun); sc.add(sun.target);
+    /* 顔の補助光：カメラの位置からやわらかく当てる（逆光・暗い室内でも話し手の顔が読めるように）。寄っているときは強める */
+    S.fill = new T.DirectionalLight(0xfff0e4, 0); sc.add(S.fill); sc.add(S.fill.target); S.fillK = L.dark ? 0.55 : 0.32;
     (set.lamps || []).slice(0, 2).forEach(function (l) { if (!L.lamp) return; var p = new T.PointLight(0xffb060, L.lamp, 9, 1.6); p.position.set(l.x, l.y, l.z); sc.add(p); l.light = p; });
     /* 話し手の足もとの光の輪 */
     S.ring = new T.Mesh(K.G.plane(), K.mat('#ffe9b0', { basic: true, map: K.tex.glow(), transparent: true, depthWrite: false, add: true, fog: false, opacity: 0.999 }));
@@ -168,6 +170,8 @@
     makeParticles();
     (node.cast || []).forEach(function (c) { addFig(typeof c === 'string' ? { id: c } : c); });
     fitWide(true);
+    /* 人物の用意より先に話し手が指定されていたら、用意ができたところで寄る */
+    if (S.wantSpeaker && S.figs[S.wantSpeaker] && !S.speaker) speak(S.wantSpeaker);
     K.fitLabels(set.g, S.camera, S.h); labelDensity();
     return set;
   }
@@ -226,8 +230,12 @@
   }
   function pose(id, p) { var l = S.figs[id]; if (l) l.forEach(function (f) { f.setPose(p); }); }
   function speak(id) {
+    var prev = S.speaker; S.wantSpeaker = id || null;
     S.speaker = id && S.figs[id] ? id : null;
     for (var k in S.figs) S.figs[k].forEach(function (f, i) { f.speak(k === S.speaker && i === 0); });
+    /* 話し手の顔が読めるよう、その人に寄る。節が寄り（at）を指定した直後や遊びの最中は動かさない */
+    /* （節が場所へ寄せた直後でも、話し手には寄る。別の人物へ寄せた直後だけは節の指定を優先） */
+    if (S.speaker && S.speaker !== prev && !S.act && S.set && S.focusFig !== S.speaker && !(S.focusFig && Date.now() - (S.focusT || 0) < 150)) focus(S.speaker);
   }
   var _v = T ? new T.Vector3() : null, _v2 = T ? new T.Vector3() : null;
   function headOf(id, v) { var l = S.figs[id]; if (!l) return null; l[0].root.updateMatrixWorld(true); return l[0].headWorld(v || new T.Vector3()); }
@@ -256,17 +264,19 @@
   function focus(at) {
     if (!S.set || S.act) return;
     var c = S.set.cam, fs = S.set.figScale || 1, fd = S.set.focusDist || 5.2;
+    S.focusFig = null; S.focusT = Date.now();
     if (!at || at === 'wide') { S.focusAt = null; S.goal.t.set(c.t[0], c.t[1], c.t[2]); S.goal.az = c.az; S.goal.el = c.el; S.goal.dist = fitDist(c.rh, c.rv); return; }
     var narrow = S.camera.aspect < 0.8 ? 1.25 : 1;
     if (S.figs[at]) {
       var f = S.figs[at][0], h = headOf(at, _v), ry = f.root.rotation.y, d = ry - c.az, sc = f.root.scale.x;
       while (d > PI) d -= PI * 2; while (d < -PI) d += PI * 2;
-      S.focusAt = at;
+      S.focusAt = at; S.focusFig = at; S.focusT = Date.now();
       /* 顔が見える側へ回り込む。後ろ向きの人は斜め後ろ姿のまま（絵巻の後ろ姿） */
       var pref = c.az + K.clamp(Math.abs(d) < 1.9 ? d * 0.75 : -Math.sign(d) * (PI - Math.abs(d)) * 0.4, -1.0, 1.0);
       var close = fs < 1.6;            /* 遠景の舞台（後宮・北山）は全身の寄り */
-      var rv = close ? 0.44 * sc : 1.4 * sc, rh = rv * 1.15;
-      var dist = Math.max(close ? 1.3 : 4, fitDist(rh, rv)), ty = h.y - (close ? 0.16 : 0.5) * sc;
+      /* 寄り：顔が読める胸から上（スマホでも顔が小さくならないよう、以前より詰める） */
+      var rv = close ? 0.31 * sc : 1.4 * sc, rh = rv * 1.15;
+      var dist = Math.max(close ? 0.9 : 4, fitDist(rh, rv)), ty = h.y - (close ? 0.1 : 0.5) * sc;
       /* ほかの人物も遮る物として数える（頭の高さまで） */
       S.figOcc = (S.set.occ || []).slice();
       for (var k2 in S.figs) if (k2 !== at) S.figs[k2].forEach(function (o) { var hp = headOf(k2, _v2); S.figOcc.push({ x: o.root.position.x, z: o.root.position.z, r: 0.3 * o.root.scale.x, top: hp ? hp.y + 0.12 * o.root.scale.x : 1.4 }); });
@@ -295,6 +305,10 @@
     var ce = Math.cos(c.el), cam = S.camera;
     cam.position.set(c.t.x + c.dist * Math.sin(c.az) * ce, c.t.y + c.dist * Math.sin(c.el), c.t.z + c.dist * Math.cos(c.az) * ce);
     cam.lookAt(c.t);
+    if (S.fill) {
+      S.fill.position.copy(cam.position); S.fill.position.y += 0.3; S.fill.target.position.copy(c.t);
+      var want = (S.focusFig ? 1 : 0.35) * S.fillK * (K.HQ ? 1 : 0.8); S.fill.intensity += (want - S.fill.intensity) * k;
+    }
   }
 
   /* ---------- 粒（花びら・紅葉・雪・雨） ---------- */

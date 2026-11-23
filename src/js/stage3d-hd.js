@@ -369,7 +369,7 @@
   var CATCHM = null;
   function catchGeo(R, ir, two) {
     var k = 'c' + R + '|' + ir + (two ? 'b' : ''); if (EYEG[k]) return EYEG[k];
-    var g = new T.CircleGeometry(ir * (two ? 0.085 : 0.17), 12), p = g.attributes.position, cx = ir * (two ? -0.34 : 0.36), cy = ir * (two ? -0.36 : 0.4), i;
+    var g = new T.CircleGeometry(ir * (two ? 0.06 : 0.12), 12), p = g.attributes.position, cx = ir * (two ? -0.34 : 0.36), cy = ir * (two ? -0.36 : 0.4), i;
     for (i = 0; i < p.count; i++) { var x = p.getX(i) * 1.15 + cx, y = p.getY(i) + cy; p.setXYZ(i, x, y, Math.sqrt(Math.max(0, R * R - x * x - y * y)) + 0.00045); }
     g.computeVertexNormals(); g._gjShared = true; return (EYEG[k] = g);
   }
@@ -407,7 +407,7 @@
       var R = e.radius;
       eg.add(new T.Mesh(new T.SphereGeometry(R, seg, seg * 0.7 | 0), white));
       eg.add(new T.Mesh(irisGeoH(R, R * (H.anchors.iris || 0.5)), IRISM));
-      if (!CATCHM) { CATCHM = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.82, depthWrite: false, fog: false }); CATCHM._gjShared = true; }
+      if (!CATCHM) { CATCHM = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, fog: false }); CATCHM._gjShared = true; }
       var cm = new T.Mesh(catchGeo(R, R * (H.anchors.iris || 0.5)), CATCHM); cm.renderOrder = 3; eg.add(cm);
       var cm2 = new T.Mesh(catchGeo(R, R * (H.anchors.iris || 0.5), true), CATCHM); cm2.renderOrder = 3; eg.add(cm2);
       var lid = new T.Mesh(new T.SphereGeometry(R * 1.03, seg, 10, 0, PI * 2, 0, PI / 2), lidM);
@@ -633,8 +633,8 @@
     return 'female';
   }
   /* 新しい頭の役：若い女性 lady / 大人の女性 woman / 尼君 ama / 少女・子ども girl。人ごとの少しの違い（shape） */
-  var HROLE = { haha: 'woman', shonagon: 'woman', myobu: 'woman', otona: 'woman', amagimi: 'ama' };
-  var HSHAPE = { koui: { w: 0.975, e: 1.0, c: 1.0 }, fujitsubo: { w: 0.99, e: 1.03, c: 0.99 }, kokiden: { w: 1.025, e: 0.965, c: 1.03 }, murasaki: { w: 1.0, e: 1.03, c: 0.98 },
+  var HROLE = { haha: 'matron', shonagon: 'matron', myobu: 'woman', otona: 'woman', kokiden: 'woman', amagimi: 'ama' };
+  var HSHAPE = { koui: { w: 0.975, e: 1.0, c: 1.0 }, fujitsubo: { w: 0.99, e: 1.03, c: 0.99 }, kokiden: { w: 1.02, e: 0.97, c: 1.03 }, murasaki: { w: 1.0, e: 1.03, c: 0.98 },
     haha: { w: 0.98, e: 0.98, c: 1.02 }, shonagon: { w: 1.03, e: 0.97, c: 1.0 }, inuki: { w: 1.02, e: 0.98, c: 0.97 } };
   function heianRole(id, kind) {
     if (!isHeian('lady')) return null;
@@ -693,6 +693,7 @@
       while (ex.length < 6) ex.push(cols[Math.min(cols.length - 1, ex.length)]);
       cols = ex.slice(0, 6); this.nLay = 6;
     }
+    if (HROLE[id] === 'matron' && isHeian('matron')) cols = cols.map(function (c0) { var k = new T.Color(c0); k.offsetHSL(0, -0.18, -0.05); return '#' + k.getHexString(); });
     this.cols = cols;
     this.child = { shojo: 1, warawa: 1, chigo: 1 }[look.kind] ? 1 : 0;
     this.seed = (opts.seed || 0) + id.length * 1.7;
@@ -999,11 +1000,11 @@
     if (girl && (hs === 'ougi' || hs === 'mid')) {
       /* 目刺し（めざし）：子どもの前髪を眉の高さで切りそろえる（平安の童の髪。肩で切る振分髪と合わせて）。
          根元は髪の殻の下に隠し、生え際から額に沿って下ろす。毛先は細い毛に分かれる */
-      var nf = 9, endY = ey + 0.0215;
+      var nf = 11, endY = ey + 0.024;
       for (var f = 0; f < nf; f++) {
-        var a = (f / (nf - 1) - 0.5) * 1.3, rf = r(), e2 = endY - 0.002 * rf - 0.004 * Math.pow(Math.abs(a) / 0.65, 2);
-        var pf = [hp(a * 0.55, 0.09, 0.003), hp(a * 0.85, 0.074, 0.0045), hp(a, (0.074 + e2) / 2, 0.004), hp(a * 1.02, e2, 0.0035)];
-        strip(M, pf, [0.012, 0.021, 0.022, 0.02], 0.0015, outw, 10, white, fadeEnd(0.1), 3);
+        var a = (f / (nf - 1) - 0.5) * 1.3 + (r() - 0.5) * 0.05, rf = r(), e2 = endY - 0.007 * rf * rf - 0.005 * Math.pow(Math.abs(a) / 0.65, 2) + 0.002 * Math.sin(f * 2.7);
+        var pf = [hp(a * 0.55, 0.09, 0.003), hp(a * 0.85, 0.074, 0.0045), hp(a * 1.0, (0.074 + e2) / 2, 0.004), hp(a * 1.03 + (r() - 0.5) * 0.04, e2, 0.0035)];
+        strip(M, pf, [0.01, 0.016, 0.017, 0.012], 0.0012, outw, 10, white, fadeEnd(0.3), 3);
       }
     }
     [-1, 1].forEach(function (sd) {
