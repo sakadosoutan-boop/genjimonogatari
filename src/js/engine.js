@@ -444,6 +444,7 @@
   function leave() {
     epoch++;
     stopActivity();
+    if (root.GJ_BGM) root.GJ_BGM.stop();
     if (st && mode !== 'end' && mode !== 'title') persist();
     UI.closeModal(); UI.card(null); UI.cutin(null); UI.caption(null); UI.textHidden(false);
     stg('arrows', null);
@@ -458,6 +459,7 @@
         rate: cm.q ? Math.round((cm.ok || 0) / cm.q * 100) : null,
         cleared: (c.acts || []).filter(function (a) { return cm.cleared[a.id]; }).length, endings: Object.keys(cm.endings).length, hasSave: hasSave(id) };
     }) });
+    if (root.GJ_BGM) root.GJ_BGM.sync(meta.settings.sound);
   }
   function actOpen(ch, cm, i) { return classroom() || i === 0 || !!cm.cleared[ch.acts[i].id] || !!cm.cleared[ch.acts[i - 1].id]; }
   function showChapter(chId) {
@@ -549,6 +551,7 @@
     sound: function () {
       meta.settings.sound = !meta.settings.sound;
       refresh();
+      if (screenNow === 'title' && root.GJ_BGM) root.GJ_BGM.sync(meta.settings.sound);
       if (UI.modalId() === 'menu') ACT.menu();
       if (meta.settings.sound) UI.sfx('on');
       UI.toast(meta.settings.sound ? '効果音を入れました' : '効果音を切りました');
@@ -558,7 +561,7 @@
     },
     print: function () { try { root.print(); } catch (e) {} },
     settings: function () { openSettings(UI.modalId() === 'menu'); },
-    set: function (b) { var k = b.getAttribute('data-k'); if (k in meta.settings) { meta.settings[k] = !meta.settings[k]; refresh(); if (k === 'sound' && meta.settings.sound) UI.sfx('on'); } },
+    set: function (b) { var k = b.getAttribute('data-k'); if (k in meta.settings) { meta.settings[k] = !meta.settings[k]; refresh(); if (k === 'sound') { if (meta.settings.sound) UI.sfx('on'); if (screenNow === 'title' && root.GJ_BGM) root.GJ_BGM.sync(meta.settings.sound); } } },
     mode: function (b) { setMode(b.getAttribute('data-v') === '1'); },
     view: function (b) { setView(b.getAttribute('data-v')); },
     erase: function (b) {

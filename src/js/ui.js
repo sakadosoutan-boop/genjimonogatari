@@ -527,7 +527,7 @@
       '<button type="button" class="gj-seg" data-gj="view" data-v="2d" aria-pressed="' + (s.view === '2d') + '"><b><i class="gj-seg-d" aria-hidden="true"></i>絵巻（軽量）</b><small>古い端末・電池の節約に</small></button></div>' +
       '<h4 class="gj-sh">文字と音</h4>' +
       sw('big', s.big, '文字を大きく', '教室のスクリーンに映すとき') + sw('instant', s.instant, '文字をすぐに表示', '一文字ずつ出さない') +
-      sw('ruby', s.ruby !== false, 'ルビを表示', '読みがなを出す') + sw('sound', s.sound, '効果音', '琴・鐘・風・雨など（はじめは切）') +
+      sw('ruby', s.ruby !== false, 'ルビを表示', '読みがなを出す') + sw('sound', s.sound, '効果音', '琴・鐘・風・雨など。表紙ではBGMも流れます（はじめは切）') +
       '<p class="gj-title-note">キー操作：Enter／スペース＝次へ　1〜4＝選択肢　H＝文字を隠す　L＝履歴　Esc＝閉じる</p>' +
       '<button type="button" class="gj-btn danger" data-gj="erase">記録を消す</button><p class="gj-title-note">今の舞台：' + esc(info.now) + '</p></div>';
   }

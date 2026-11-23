@@ -18,6 +18,13 @@ if (wantsHD && fs.existsSync(path.join(root, HD))) {
   const at = html.lastIndexOf('</body>');
   html = html.slice(0, at) + '<script type="text/plain" id="gj3-hd-data">\n' + read(HD).replace(/<\/script/gi, '<\\/script') + '\n</script>\n' + html.slice(at);
 }
+// 表紙 BGM のデータ（MP3 を Base64 化したテキスト、約 3MB）も、すぐには実行しない形で末尾に埋め込む。
+// bgm.js が表紙で音を入れるときにだけ読み込む（読み込み中も表紙はすぐ出る）。
+const BGM = 'src/audio/title-bgm.b64';
+if (fs.existsSync(path.join(root, BGM))) {
+  const at = html.lastIndexOf('</body>');
+  html = html.slice(0, at) + '<script type="text/plain" id="gj-bgm-data">\n' + read(BGM).trim() + '\n</script>\n' + html.slice(at);
+}
 const out = path.join(root, 'dist/index.html');
 const kb = Math.round(Buffer.byteLength(html) / 1024);
 if (process.argv.includes('--check')) {
