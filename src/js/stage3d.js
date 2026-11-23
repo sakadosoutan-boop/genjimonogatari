@@ -235,9 +235,9 @@
     for (var k in S.figs) S.figs[k].forEach(function (f, i) { f.speak(k === S.speaker && i === 0); });
     /* 話し手の顔が読めるよう、その人に寄る。節が寄り（at）を指定した直後や遊びの最中は動かさない */
     /* （節が場所へ寄せた直後でも、話し手には寄る。別の人物へ寄せた直後だけは節の指定を優先） */
-    if (S.speaker && S.speaker !== prev && !S.act && S.set && S.focusFig !== S.speaker && !(S.focusFig && Date.now() - (S.focusT || 0) < 150)) focus(S.speaker);
+    if (S.speaker && S.speaker !== prev && !S.act && S.set && S.focusFig !== S.speaker && !(S.focusFig && Date.now() - (S.focusT || 0) < 150)) focus(S.speaker, true);
   }
-  var _v = T ? new T.Vector3() : null, _v2 = T ? new T.Vector3() : null;
+  var _v = T ? new T.Vector3() : null, _v2 = T ? new T.Vector3() : null, _v3 = T ? new T.Vector3() : null;
   function headOf(id, v) { var l = S.figs[id]; if (!l) return null; l[0].root.updateMatrixWorld(true); return l[0].headWorld(v || new T.Vector3()); }
 
   /* ---------- カメラ ---------- */
@@ -261,7 +261,7 @@
     }
     return false;
   }
-  function focus(at) {
+  function focus(at, face) {
     if (!S.set || S.act) return;
     var c = S.set.cam, fs = S.set.figScale || 1, fd = S.set.focusDist || 5.2;
     S.focusFig = null; S.focusT = Date.now();
@@ -273,14 +273,15 @@
       S.focusAt = at; S.focusFig = at; S.focusT = Date.now();
       /* 顔が見える側へ回り込む。後ろ向きの人は斜め後ろ姿のまま（絵巻の後ろ姿） */
       var pref = c.az + K.clamp(Math.abs(d) < 1.9 ? d * 0.75 : -Math.sign(d) * (PI - Math.abs(d)) * 0.4, -1.0, 1.0);
-      var close = fs < 1.6;            /* 遠景の舞台（後宮・北山）は全身の寄り */
+      if (face) pref = ry + K.clamp(-d * 0.25, -0.5, 0.5);   /* 話し手：顔の正面側（少し斜め）から */
+      var close = fs < 1.6 || !!face;   /* 遠景の舞台（後宮・北山）は全身の寄り。話し手へは胸から上 */
       /* 寄り：顔が読める胸から上（スマホでも顔が小さくならないよう、以前より詰める） */
       var rv = close ? 0.31 * sc : 1.4 * sc, rh = rv * 1.15;
       var dist = Math.max(close ? 0.9 : 4, fitDist(rh, rv)), ty = h.y - (close ? 0.1 : 0.5) * sc;
       /* ほかの人物も遮る物として数える（頭の高さまで） */
       S.figOcc = (S.set.occ || []).slice();
       for (var k2 in S.figs) if (k2 !== at) S.figs[k2].forEach(function (o) { var hp = headOf(k2, _v2); S.figOcc.push({ x: o.root.position.x, z: o.root.position.z, r: 0.3 * o.root.scale.x, top: hp ? hp.y + 0.12 * o.root.scale.x : 1.4 }); });
-      var els = close ? [0.24, 0.36, 0.5, 0.66] : [0.42, 0.6], offs = [0, 0.18, -0.18, 0.36, -0.36, 0.55, -0.55, 0.8, -0.8], best = null, i, j;
+      var els = f.pose === 'lie' ? [1.2, 1.05, 1.35] : close ? [0.24, 0.36, 0.5, 0.66] : [0.42, 0.6],   /* 伏している人は上から見下ろす */ offs = [0, 0.18, -0.18, 0.36, -0.36, 0.55, -0.55, 0.8, -0.8], best = null, i, j;
       /* 遠い順に試し、どれも遮られるなら少しずつ近づく（顔は大きくなる） */
       [1, 0.8, 0.62].forEach(function (kd) {
         for (j = 0; j < els.length && !best; j++) for (i = 0; i < offs.length; i++) {
@@ -293,7 +294,7 @@
       });
       if (!best) best = [pref, 0.75, dist * narrow];
       S.figOcc = null;
-      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = best[2];
+      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = best[2]; S.focusDy = h.y - ty;
     } else if (S.set.slots[at]) {
       var s = S.set.slots[at]; S.focusAt = at;
       S.goal.t.set(s[0], (s[3] || 0) + 0.6 * fs, s[1]); S.goal.az = c.az; S.goal.el = 0.5; S.goal.dist = fd * 1.5 * narrow;
@@ -301,6 +302,8 @@
   }
   function applyCam(dt) {
     var c = S.cam, g = S.goal, k = 1 - Math.exp(-dt * 3.2);
+    /* 人物に寄っている間は、その人の今の頭の位置へ目標を追う（姿勢の変化・置き直し・高精細版への差し替えのあとも外れない） */
+    if (S.focusFig && S.figs[S.focusFig] && S.focusDy != null) { var hh = headOf(S.focusFig, _v3); if (hh) g.t.set(hh.x, hh.y - S.focusDy, hh.z); }
     c.t.lerp(g.t, k); c.az += (g.az - c.az) * k; c.el += (g.el - c.el) * k; c.dist += (g.dist - c.dist) * k;
     var ce = Math.cos(c.el), cam = S.camera;
     cam.position.set(c.t.x + c.dist * Math.sin(c.az) * ce, c.t.y + c.dist * Math.sin(c.el), c.t.z + c.dist * Math.cos(c.az) * ce);

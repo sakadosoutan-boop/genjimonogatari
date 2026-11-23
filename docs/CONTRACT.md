@@ -162,10 +162,11 @@ activity(kind, cfg, cb)         // 3D の遊びを始める。→ { stop() }
   設定で絵巻（軽量）を選んでいる人には読まない。一枚 HTML（`dist/index.html`）では `<script type="text/plain" id="gj3-hd-data">` に埋め込み、同じく表紙のあとに実行する。
 - 画質：`high` は影・物理ベースの材質・映り込み・木目の凹凸。`low`（エンジンが小さい画面・少ないメモリで選ぶ）でも高精細の人物は使い、顔の細かい網目は寄ったときだけ、影なし・材質は軽いもの。
   `lite`（`setQuality('lite')`、またはメモリ 2GB 以下）は簡素な人形だけ。読み込みに失敗したときも簡素な人形のまま動く。
+- 話し手（`speak(id)`）が変わると、舞台はその人の顔の正面側へ胸から上の構図で寄る（その節が別の人物へ `focus` した直後と、遊びの最中は動かさない）。寄っている間はカメラから弱い補助光を当てる。
 - 寄り（`focus(人物)`）は胸から上の構図。顔は文字の窓（下 4 割）より上に置き、手前の柱・几帳・屏風・ほかの人物に遮られない方位と高さを選ぶ（舞台が `occ` に遮る物を集める）。
 - 話し手は口（あご）が小さく動く。全員、呼吸とまばたき。
-- 女性・子どもの頭（`heads.lady` 若い女性 / `woman` 大人の女性 / `ama` 尼君 / `girl` 少女・子ども）は `tools/build-heian-heads.py`（Blender）が作る。
-  4 体は同じ網目なので、三角形の並び（`indices.hf_high/hf_low`）と UV（`uvs.hf_high/hf_low`）は共有し、頭ごとに位置と肌の画像（`tex.high` 1024 / `tex.low` 512、JPEG の data URI）を持つ。
+- 女性・子どもの頭（`heads.lady` 若い女性 / `woman` 大人の女性 / `matron` 年配の女性 / `ama` 尼君 / `girl` 少女・子ども）は `tools/build-heian-heads.py`（Blender）が作る。
+  5 体は同じ網目なので、三角形の並び（`indices.hf_high/hf_low`）と UV（`uvs.hf_high/hf_low`）は共有し、頭ごとに位置と肌の画像（`tex.high` 1024 / `tex.low` 512、JPEG の data URI）を持つ。
   ふだんの顔はやわらかな微笑みで、表情なしの形への差を `lod.*.skin.dn`（位置と同じ符号化）に持つ。ゲームはモーフとして混ぜ、泣く・伏す・礼・祈る・書く姿勢では表情なしへ戻す。
   虹彩・まつ毛の画像は `tex.iris` / `tex.lash`。目印 `anchors` に眼球の中心・半径・まぶたを開いた角度（`eyes[].open`）・まつ毛を植える上まぶたのふち（`eyes[].lash`）・口の高さ（`mouth`）。
   人物 id → 頭の割り当てと、人ごとの少しの違い（顔の幅・目の大きさ・あごの長さ）は `stage3d-hd.js` の `heianRole` / `HSHAPE`。データに 4 体がないときは、もとの虞美人の頭（`female`）で白粉の顔になる。

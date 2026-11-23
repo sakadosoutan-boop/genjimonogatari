@@ -90,7 +90,7 @@ async function heian(browser) {
   assert.ok(mb < 8, '裏読み込みのデータは 8MB 以下（' + mb.toFixed(2) + ' MB）');
   const { p, errors } = await open(browser, { width: 1280, height: 800 }, 'stage=kiritsubo&bare=1&cast=koui:kami');
   await hdReady(p);
-  const WANT = { koui: 'lady', fujitsubo: 'lady', kokiden: 'lady', nyobo: 'lady', haha: 'woman', shonagon: 'woman', amagimi: 'ama', murasaki: 'girl', inuki: 'girl', wakamiya: 'girl', ichinomiya: 'girl' };
+  const WANT = { koui: 'lady', fujitsubo: 'lady', kokiden: 'woman', nyobo: 'lady', haha: 'matron', shonagon: 'matron', myobu: 'woman', amagimi: 'ama', murasaki: 'girl', inuki: 'girl', wakamiya: 'girl', ichinomiya: 'girl' };
   for (const id of Object.keys(WANT)) {
     await p.evaluate((id) => { const St = window.GENJI.Stage3D; St.setScene({ stage: 'kiritsubo', light: 'day', cast: [{ id: id, at: 'naka' }] }); St.focus(id); }, id);
     await p.waitForFunction((id) => { const f = window.GENJI.Stage3D._state.figs[id][0]; let ok = true; f.root.traverse((o) => { const im = o.isMesh && o.material && o.material.map && o.material.map.image; if (im && im.tagName === 'IMG' && !im.complete) ok = false; }); return ok; }, id, { timeout: 20000 });

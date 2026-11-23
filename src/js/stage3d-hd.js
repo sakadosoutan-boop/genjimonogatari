@@ -133,6 +133,22 @@
       g.putImageData(im, 0, 0);
     });
   }
+  /* 袿の丸文（まるもん）：大きな丸の中に四弁の花を、白く浮く織りの文様として。一つのくり返しに一つ */
+  function maruTex() {
+    return ctex('maru', 256, 256, function (g, w, h) {
+      var im = g.createImageData(w, h), d = im.data, x, y, r = K.rng(9);
+      for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+        var i = (y * w + x) * 4, weave = ((x + y) % 2 ? 3 : -3) + (y % 4 < 2 ? 2 : -2);
+        var dx = x - w / 2 + 0.5, dy = y - h / 2 + 0.5, rr = Math.sqrt(dx * dx + dy * dy), a = Math.atan2(dy, dx);
+        var ring = rr > 78 && rr < 90 ? 1 : 0;
+        var pet = 48 * Math.abs(Math.cos(2 * a)) + 10, flower = rr < pet && rr > 6 ? 1 : 0, core = rr < 10 ? 1 : 0;
+        var ray = rr > 54 && rr < 74 && Math.abs(Math.sin(a * 8)) < 0.18 ? 1 : 0;
+        var v = 214 + weave + (r() - 0.5) * 5 + 34 * Math.max(ring, flower * 0.9, ray * 0.7) - 14 * core;
+        d[i] = d[i + 1] = d[i + 2] = Math.min(255, v); d[i + 3] = 255;
+      }
+      g.putImageData(im, 0, 0);
+    });
+  }
   function silkBump() {
     return ctex('silkb', 128, 128, function (g, w, h) {
       var im = g.createImageData(w, h), d = im.data, x, y;
@@ -706,7 +722,7 @@
     if ((id === 'ichinomiya' || id === 'wakamiya') && !femRole(this.headLook.role)) { this.headLook.role = 'female'; }
     if (opts.variant && isHeian(this.headLook.role) && !this.headLook.shape) { var vv = opts.variant; this.headLook.shape = { w: 1 + 0.02 * Math.sin(vv * 2.3), e: 1 + 0.025 * Math.cos(vv * 1.7), c: 1 + 0.02 * Math.sin(vv * 3.1 + 1) }; }
     /* 材質：装束（頂点色×絹の地紋）・髪 */
-    this.mat = new T.MeshStandardMaterial({ vertexColors: true, map: silkTex(), bumpMap: silkBump(), bumpScale: 0.0004, roughness: 0.74, metalness: 0, side: T.DoubleSide });
+    this.mat = new T.MeshStandardMaterial({ vertexColors: true, map: this.fem && (look.kind === 'juni' || look.kind === 'kouchiki') ? maruTex() : silkTex(), bumpMap: silkBump(), bumpScale: 0.0004, roughness: 0.74, metalness: 0, side: T.DoubleSide });
     this.mat.emissive = new T.Color(0, 0, 0);
     this.hmat = hairMat(this.fem || this.child ? '#120f14' : '#17131a', true);
     if (isHeian(this.headLook.role)) this.hmat = lockMat('#1d1512');
