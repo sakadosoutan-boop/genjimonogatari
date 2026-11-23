@@ -213,6 +213,45 @@ def cute(P, T, E, cfg, U=None):
     wk = smooth(fy(-0.075), bottom + 0.004, P[:, 1]) * (1 - smooth(0.04, 0.07, P[:, 2]))
     P[:, 0] *= 1 - c['neck'] * wk
     P[:, 0] *= c['head_w']
+    # 8b) 様式化（猿っぽさを消す）：口もとの面を平らに（鼻の下〜唇を奥へ、あご先を前へ）、人中を短く（鼻より下を上へ）、
+    #     頭蓋を大きく（額・頭頂）、目のまわりを浅く。磨かれた 3D の人物のような、やわらかで読みやすい形へ
+    st = c.get('stylize', 0.0)
+    if st:
+        x, y, z = P[:, 0], P[:, 1], P[:, 2]
+        ex1, ey1, ez1 = abs(eyes[0][0]), eyes[0][1], eyes[0][2]
+        nb = noseY - 0.004   # 鼻の付け根（下）
+        # 人中を短く：鼻の付け根より下を上へ（首の切り口へ向けて弱める）
+        wph = smooth(nb + 0.006, nb - 0.022, y) * smooth(bottom, bottom + 0.035, y) * gauss(x, 0.034) * smooth(0.0, 0.05, z)   # 顔の中央だけ・なだらかに
+        P[:, 1] += c.get('philtrum', 0.0025) * st * wph
+        # 口もとを奥へ（唇・人中・口のまわり）。鼻先は動かさない
+        wm = gauss(x, 0.024) * smooth(nb + 0.004, nb - 0.004, y) * smooth(chinY - 0.002, chinY + 0.012, y) * smooth(0.05, 0.085, z)
+        P[:, 2] -= c.get('muzzle', 0.0035) * st * wm
+        # あご先を少し前へ（唇の下に揃える）
+        wc2 = gauss(x, 0.016) * gauss(y - (chinY - 0.002), 0.010) * smooth(0.05, 0.075, z)
+        P[:, 2] += c.get('chin_fwd', 0.0016) * st * wc2
+        # 頭蓋を大きく：眉より上を、頭の中心から少し外へ
+        cy0, cz0 = ey1 + 0.03, -0.01
+        wk2 = smooth(ey1 + 0.012, ey1 + 0.05, P[:, 1])
+        k2 = 1 + c.get('cranium', 0.045) * st * wk2
+        P[:, 0] *= k2; P[:, 1] = cy0 + (P[:, 1] - cy0) * k2; P[:, 2] = cz0 + (P[:, 2] - cz0) * k2
+        # 目のまわりを浅く（眉の下・目の下の窪みを前へ）
+        N = normals(P, T); x, y, z = P[:, 0], P[:, 1], P[:, 2]
+        dxe = np.abs(x) - ex1; rr = np.sqrt(dxe ** 2 + (y - ey1) ** 2)
+        wsk = np.exp(-((rr - 0.017) / 0.005) ** 2) * smooth(ez1 - 0.01, ez1 + 0.004, z)
+        P += N * (c.get('socket', 0.0012) * st * wsk)[:, None]
+    # 8c) 面をならす（Taubin：縮まない平滑化）。スキャン由来の細かな凹凸を消し、やわらかで整った面に。目のふち・唇・鼻の穴・耳は残す
+    if c.get('smooth_it', 0):
+        nV = len(P); ii = np.concatenate([T[:, 0], T[:, 1], T[:, 2], T[:, 1], T[:, 2], T[:, 0]]); jj = np.concatenate([T[:, 1], T[:, 2], T[:, 0], T[:, 0], T[:, 1], T[:, 2]])
+        deg = np.bincount(ii, minlength=nV).astype(float)
+        x, y, z = P[:, 0], P[:, 1], P[:, 2]
+        ex1, ey1 = abs(eyes[0][0]), eyes[0][1]
+        re = np.sqrt((np.abs(x) - ex1) ** 2 + (y - ey1) ** 2)
+        m = smooth(0.0, 0.03, z) * smooth(0.012, 0.019, re) * (1 - gauss(x, 0.022) * gauss(y - mouthY, 0.005)) * (1 - gauss(x, 0.016) * gauss(y - (noseY - 0.004), 0.006)) * (1 - smooth(0.058, 0.066, np.abs(x)))
+        m = np.clip(m, 0, 1)[:, None]
+        for it in range(int(c['smooth_it'])):
+            for lam in (0.5, -0.53):
+                acc = np.zeros_like(P); np.add.at(acc, ii, P[jj]); L = acc / np.maximum(deg, 1)[:, None] - P
+                P = P + lam * m * L
     # 9) 首の下端を胴の首の輪（ゲームの胴の上端：半径 0.054×0.052、中心 z=-0.024）の内に収める（襟の前で切り口が見えないように）
     cz = -0.024; dx = P[:, 0]; dz = P[:, 2] - cz
     r = np.sqrt((dx / 0.047) ** 2 + (dz / 0.045) ** 2)
@@ -423,7 +462,7 @@ def paint_face(pos, ao, kid, L, look, S):
     x, y, z = pos[..., 0], pos[..., 1], pos[..., 2]; ax = np.abs(x)
     col = np.broadcast_to(srgb(look['skin']), (S, S, 3)).copy()
     n1 = noise2(S, 11, 18); n2 = noise2(S, 12, 4)
-    col *= (0.985 + 0.03 * (n1 - 0.5) + 0.012 * (n2 - 0.5))[..., None]
+    mo = look.get('mottle', 1.0); col *= (0.985 + mo * (0.03 * (n1 - 0.5) + 0.012 * (n2 - 0.5)))[..., None]   # 肌のむら（様式化では弱く）
     ey, ex, ez = L['eyes'][0][1], abs(L['eyes'][0][0]), L['eyes'][0][2]
     red = (0.22 * gauss(x, 0.008) * gauss(y - L['noseY'], 0.008) * smooth(0.075, 0.1, z)
            + 0.25 * smooth(0.058, 0.07, ax) * smooth(-0.01, 0.01, -z) * gauss(y - (ey - 0.01), 0.03)
@@ -560,32 +599,32 @@ def lash_img(W=256, H=64, seed=7):
 SKIN = '#f3d5c2'
 ROLES = {
     # 若い女性：桐壺の更衣・藤壺・女御更衣たち・女房。時代劇の女優のような自然な顔（誇張を控えた目の大きさ・やわらかな二重・自然な鼻と唇・穏やかな微笑み）
-    'lady': dict(cfg=dict(face_y=0.88, eye_x=1.24, eye_y=1.18, eye_r=1.14, eye_tilt=0.0016, lid_drop=0.0018, inner=0.0008, nose=0.82, nose_w=0.9, nose_lift=0.0, nose_bridge=-0.0005,
-                          cheek=0.0036, cheek_low=0.0010, jaw=0.14, chin=0.0018, chin_round=1.1, lips_w=0.86, lips_full=0.0002, lower_full=0.0006, smile=0.0030, smile_back=0.0008, cheek_raise=0.0022, lower_lid=0.0014, mouth_back=0.0018,
+    'lady': dict(cfg=dict(stylize=1.0, smooth_it=6, face_y=0.88, eye_x=1.30, eye_y=1.24, eye_r=1.17, eye_tilt=0.0016, lid_drop=0.0018, inner=0.0008, nose=0.82, nose_w=0.9, nose_lift=0.0, nose_bridge=-0.0005,
+                          cheek=0.0036, cheek_low=0.0010, jaw=0.14, chin=0.0018, chin_round=1.1, lips_w=0.86, lips_full=-0.0004, lower_full=0.0004, smile=0.0030, smile_back=0.0008, cheek_raise=0.0022, lower_lid=0.0014, mouth_back=0.0018,
                           forehead=0.0024, neck=0.12, tearbag=0.0004, tb_y=0.0092, fold=0.0004, fold_y=0.0085),
                  look=dict(skin='#f1d1bd', pink='#e8a092', blush=0.26, blushCol='#eba090', blushX=0.015, blushY=0.018, blushR=0.016, lip='#c96a70', lipA=0.6, lipW=0.0160, bow=0.0020, lowerH=0.0084, smileP=0.0016, lipHi=0.06, hair='long',
                            linerW=1.3, liner=0.9, wing=0.0012, crease=0.0028, creaseA=0.55, shadow='#d9a197', shadowA=0.2, browY=0.0195, browW=0.0026, browA=0.6, browCol='#3a2823',
-                           browArch=0.0016, browHead=0.0010, browTail=0.0008, aoMin=0.72, tear=0.08, waterline='#d9aaa2'), iris=0.53, age=0.0, skinHex='f1d1bd'),
+                           browArch=0.0016, browHead=0.0010, browTail=0.0008, aoMin=0.86, mottle=0.35, tear=0.08, waterline='#d9aaa2'), iris=0.53, age=0.0, skinHex='f1d1bd'),
     # 大人の女性（三十代）：靫負命婦・北山の女房・弘徽殿の女御。落ち着いた大人の顔
-    'woman': dict(cfg=dict(face_y=0.93, eye_x=1.12, eye_y=1.06, eye_r=1.07, lid_drop=0.0024, nose=0.88, nose_w=0.92, smile=0.0018, smile_back=0.0005, cheek_raise=0.0010, lower_lid=0.0006, mouth_back=0.001,
+    'woman': dict(cfg=dict(stylize=1.0, smooth_it=5, face_y=0.92, eye_x=1.17, eye_y=1.11, eye_r=1.09, lid_drop=0.0024, nose=0.88, nose_w=0.92, smile=0.0018, smile_back=0.0005, cheek_raise=0.0010, lower_lid=0.0006, mouth_back=0.001,
                            cheek=0.0022, jaw=0.08, chin=0.0012, lips_w=0.9, lips_full=0.0002, age=0.2),
-                  look=dict(skin='#efcbb6', blush=0.14, lip='#b8606a', lipA=0.55, smileP=0.0008, liner=0.8, linerW=1.1, shadowA=0.16, browA=0.66, browArch=0.0020, age=0.25, aoMin=0.66, hair='long', waterline='#d4a49c', tear=0.0), iris=0.5, age=0.3, skinHex='efcbb6'),
+                  look=dict(skin='#efcbb6', blush=0.14, lip='#b8606a', lipA=0.55, smileP=0.0008, liner=0.8, linerW=1.1, shadowA=0.16, browA=0.66, browArch=0.0020, age=0.18, aoMin=0.82, mottle=0.4, hair='long', waterline='#d4a49c', tear=0.0), iris=0.5, age=0.3, skinHex='efcbb6'),
     # 年配の女性（四十五〜五十五）：母北の方・少納言の乳母。頬から下がふっくら、口角のわきのやわらかなたるみ、ほうれい線と目尻の細いしわ、やや重いまぶた、細めの唇、やさしい微笑み
-    'matron': dict(cfg=dict(face_y=0.96, eye_x=1.06, eye_y=1.0, eye_r=1.04, lid_drop=0.0032, nose=0.92, smile=0.0018, smile_back=0.0004, cheek_raise=0.0010, lower_lid=0.0005, mouth_back=0.0008,
-                            cheek=0.0016, cheek_low=0.0016, jowl=0.0020, jaw=0.03, chin=0.0006, lips_w=0.92, lips_full=-0.0006, age=0.85),
+    'matron': dict(cfg=dict(stylize=0.85, smooth_it=4, face_y=0.95, eye_x=1.11, eye_y=1.05, eye_r=1.06, lid_drop=0.0032, nose=0.92, smile=0.0018, smile_back=0.0004, cheek_raise=0.0010, lower_lid=0.0005, mouth_back=0.0008,
+                            cheek=0.0024, cheek_low=0.0024, jowl=0.0012, jaw=0.05, chin=0.0006, lips_w=0.92, lips_full=-0.0006, age=0.85),
                    look=dict(skin='#ecc8b2', blush=0.08, lip='#a86a6c', lipA=0.42, lipW=0.0160, lowerH=0.0068, smileP=0.0008, liner=0.55, creaseA=0.5, shadowA=0.1, browA=0.58, browCol='#4a3a34',
-                             age=0.75, aoMin=0.62, hair='long', waterline='#cc9c94', tear=0.0), iris=0.49, age=0.8, skinHex='ecc8b2'),
+                             age=0.5, aoMin=0.78, mottle=0.45, hair='long', waterline='#cc9c94', tear=0.0), iris=0.49, age=0.8, skinHex='ecc8b2'),
     # 尼君：「四十余ばかり…いと白うあてに痩せたれど、つらつきふくらかに」。上品な老い
-    'ama': dict(cfg=dict(smile=0.0007, lower_lid=0.0004, face_y=0.93, eye_x=1.10, eye_y=1.06, eye_r=1.05, lid_drop=0.0025, cheek=0.0022, jaw=0.08, chin=0.0012,
+    'ama': dict(cfg=dict(stylize=0.7, smooth_it=3, smile=0.0007, lower_lid=0.0004, face_y=0.93, eye_x=1.10, eye_y=1.06, eye_r=1.05, lid_drop=0.0025, cheek=0.0022, jaw=0.08, chin=0.0012,
                          nose=0.9, lips_w=0.9, lips_full=0.0002, age=0.9),
-                look=dict(skin='#f4e0d4', blush=0.08, lip='#b06a6c', lipA=0.45, liner=0.45, creaseA=0.5, shadowA=0.12, browA=0.5, browCol='#4a3a34', age=0.85, tear=0.0, aoMin=0.68, hair='bob'), age=0.9, skinHex='f4e0d4'),
+                look=dict(skin='#f4e0d4', blush=0.08, lip='#b06a6c', lipA=0.45, liner=0.45, creaseA=0.5, shadowA=0.12, browA=0.5, browCol='#4a3a34', age=0.7, tear=0.0, aoMin=0.8, mottle=0.45, hair='bob'), age=0.9, skinHex='f4e0d4'),
     # 少女・子ども：若紫（十歳ほど）・犬君・童べ・幼子。自然な十歳の顔（目は大きすぎず、化粧はしない、ほのかな微笑み）
-    'girl': dict(cfg=dict(face_y=0.84, eye_x=1.16, eye_y=1.12, eye_r=1.12, eye_tilt=0.0006, lid_drop=0.0016, inner=0.0006, nose=0.74, nose_w=0.86, nose_lift=0.0,
-                          cheek=0.0040, cheek_low=0.0018, jaw=0.13, chin=0.0030, chin_round=1.3, lips_w=0.80, lips_full=-0.0004, lower_full=0.0003, smile=0.0024, smile_back=0.0006, cheek_raise=0.0016, lower_lid=0.0008, mouth_back=0.0016,
+    'girl': dict(cfg=dict(stylize=1.0, smooth_it=6, philtrum=0.0022, muzzle=0.0032, face_y=0.84, eye_x=1.22, eye_y=1.18, eye_r=1.15, eye_tilt=0.0006, lid_drop=0.0016, inner=0.0006, nose=0.74, nose_w=0.86, nose_lift=0.0,
+                          cheek=0.0040, cheek_low=0.0018, jaw=0.13, chin=0.0030, chin_round=1.3, lips_w=0.80, lips_full=-0.0008, lower_full=0.0002, smile=0.0024, smile_back=0.0006, cheek_raise=0.0016, lower_lid=0.0008, mouth_back=0.0016,
                           neck=0.20, forehead=0.0050),
                  look=dict(skin='#f2d0bb', pink='#e7a596', blush=0.24, blushCol='#eea494', blushR=0.020, blushY=0.022, lip='#cf8a86', lipA=0.32, lipW=0.0136, bow=0.0012,
                            lowerH=0.0072, smileP=0.0014, hair='bob', liner=0.35, linerW=1.0, creaseA=0.25, shadowA=0.0, browA=0.34, browW=0.0024, browCol='#4e372b', browY=0.0205,
-                           browArch=0.0014, browHead=0.0010, browTail=0.0004, aoMin=0.7, tear=0.04, waterline='#dcaea6'), iris=0.52, age=0.0, skinHex='f2d0bb'),
+                           browArch=0.0014, browHead=0.0010, browTail=0.0004, aoMin=0.86, mottle=0.3, tear=0.04, waterline='#dcaea6'), iris=0.52, age=0.0, skinHex='f2d0bb'),
 }
 
 # ---------------------------------------------------------------- 符号化（鴻門の会 pack-head-assets.py と同じ delta-rle-v1）
