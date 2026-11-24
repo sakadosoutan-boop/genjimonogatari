@@ -46,7 +46,7 @@
 .gj-kumo { display: block; width: 100%; height: 26px; fill: rgba(226, 201, 138, .6); stroke: rgba(184, 146, 58, .45); stroke-width: .8; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .7)); }
 
 /* ---------- 上の帯 ---------- */
-.gj-top { position: absolute; left: 0; right: 0; top: 0; z-index: 3; display: flex; align-items: center; gap: 6px; min-height: calc(var(--gj-safe-t) + var(--gj-top-h)); padding: calc(var(--gj-safe-t) + 3px) max(8px, var(--gj-safe-r)) 3px max(6px, var(--gj-safe-l)); color: #fff8e6;
+.gj-top { position: absolute; left: 0; right: 0; top: 0; z-index: 5; display: flex; align-items: center; gap: 6px; min-height: calc(var(--gj-safe-t) + var(--gj-top-h)); padding: calc(var(--gj-safe-t) + 3px) max(8px, var(--gj-safe-r)) 3px max(6px, var(--gj-safe-l)); color: #fff8e6;
   background: linear-gradient(180deg, rgba(36, 22, 46, .9), rgba(36, 22, 46, .66) 72%, rgba(36, 22, 46, 0)); }
 .gj-burger i, .gj-burger i::before, .gj-burger i::after { display: block; width: 18px; height: 2px; border-radius: 1px; background: currentColor; position: relative; }
 .gj-burger i { margin: 0 auto; }
@@ -100,10 +100,12 @@
 .gj-panel-tools { position: absolute; right: 10px; top: -46px; }
 .gj-panel-tools .gj-mini { position: relative; z-index: 0; min-height: 44px; padding: 0 16px; color: #fff8e6; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); text-decoration: none; font-size: 12.5px; letter-spacing: .1em; }
 .gj-panel-tools .gj-mini::before { content: ""; position: absolute; z-index: -1; inset: 5px 0; border-radius: 18px; background: rgba(36, 22, 46, .64); border: 1px solid rgba(255, 248, 230, .3); }
-.gj-panel-body { position: relative; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 14px 20px 12px; outline: none; scroll-padding-bottom: 12px; }
+.gj-panel-scroll { position: relative; display: flex; flex-direction: column; min-height: 0; }
+.gj-panel-body { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 14px 20px 12px; outline: none; scroll-padding-bottom: 12px; }
+.gj-panel-body:focus-visible { outline: 2px solid var(--gj-kin); outline-offset: -2px; }
 .gj-more { display: none; position: absolute; right: 50%; transform: translateX(50%); bottom: 4px; font-size: 11.5px; color: #fff8e6; pointer-events: none; background: var(--gj-suou); padding: 0 12px; border-radius: 10px; letter-spacing: .1em; animation: gj-nudge 1.6s ease-in-out infinite; }
-.gj-panel::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 34px; border-radius: 0 0 10px 10px; pointer-events: none; opacity: 0; transition: opacity .2s; background: linear-gradient(180deg, rgba(247, 241, 228, 0), rgba(247, 241, 228, .96)); }
-.gj-has-more::after { opacity: 1; }
+.gj-panel-scroll::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 34px; border-radius: 0 0 10px 10px; pointer-events: none; opacity: 0; transition: opacity .2s; background: linear-gradient(180deg, rgba(247, 241, 228, 0), rgba(247, 241, 228, .96)); }
+.gj-has-more .gj-panel-scroll::after { opacity: 1; }
 .gj-has-more .gj-more { display: block; z-index: 1; }
 @keyframes gj-nudge { 50% { transform: translate(50%, 2px); } }
 .gj-text-hidden .gj-panel, .gj-text-hidden .gj-top, .gj-text-hidden .gj-notes, .gj-text-hidden .gj-caption { display: none; }
@@ -115,7 +117,8 @@
 .gj-next-a { display: inline-block; width: 0; height: 0; border: 5px solid transparent; border-left: 8px solid currentColor; border-right: 0; }
 .gj-typed .gj-next .gj-next-a { animation: gj-go 1.3s ease-in-out infinite; }
 @keyframes gj-go { 50% { transform: translateX(3px); opacity: .6; } }
-.gj-p-say .gj-nav { margin-top: 6px; }
+.gj-panel-footer { flex: none; padding: 4px 14px 6px; border-top: 1px solid var(--gj-line); }
+.gj-panel-footer .gj-nav { margin-top: 0; }
 
 /* 名札 */
 .gj-who { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 0 0 6px; }
@@ -247,19 +250,16 @@
 .gj-p-judge .gj-opt { border-style: solid; border-color: rgba(142, 53, 72, .3); }
 .gj-p-judge .gj-opt-n { background: rgba(142, 53, 72, .1); color: var(--gj-suou); border-color: rgba(142, 53, 72, .25); }
 @media (min-width: 720px) {
-  /* 読む量の多い窓（問い・原文）は少し高く。舞台は上に残る */
-  .gj-panel.gj-p-ask, .gj-panel.gj-p-gen, .gj-panel.gj-p-game { max-height: 56vh; }
   /* 広い画面：問う原文を縦書きにして右に置く */
-  .gj-ask.has-stem { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; column-gap: 18px; }
+  .gj-ask.has-stem { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr; column-gap: 18px; }
   .gj-ask.has-stem .gj-ask-h { grid-column: 1; }
-  .gj-ask.has-stem .gj-stem-wrap { grid-column: 2; grid-row: 1 / 3; align-self: start; margin: 0; max-width: 300px; overflow-x: auto; padding: 22px 12px 12px; }
+  .gj-ask.has-stem .gj-stem-wrap { grid-column: 2; grid-row: 1 / 3; align-self: start; margin: 0; max-width: min(300px, 32vw); overflow-x: auto; padding: 22px 12px 12px; }
   .gj-ask.has-stem .gj-stem { writing-mode: vertical-rl; height: 11em; max-height: 34vh; line-height: 2; margin: 0 auto; }
   .gj-ask.has-stem .gj-ask-main { grid-column: 1; }
   .gj-ask.has-stem .gj-stem-k { left: auto; right: 10px; }
 }
 @media (max-width: 719px) {
-  .gj-panel { max-height: 40vh; bottom: calc(var(--gj-safe-b) + 6px); width: calc(100% - 12px); border-radius: 10px; }
-  @supports (height: 1dvh) { .gj-panel { max-height: 40dvh; } }
+  .gj-panel { max-height: var(--gj-phone-panel-max); bottom: calc(var(--gj-safe-b) + 6px); width: calc(100% - 12px); border-radius: 10px; }
   .gj-panel-body { padding: 10px 14px 8px; }
   .gj-panel-tools { top: -45px; right: 6px; }
   .gj-tools .wide { display: none; }
@@ -505,11 +505,14 @@
 }
 
 /* ---------- 投影向け（文字を大きく） ---------- */
-html.gj-big .gj-panel { max-height: 54vh; width: min(1100px, calc(100% - 24px)); }
+html.gj-big .gj-panel { max-height: 50vh; width: min(1100px, calc(100% - 24px)); }
 html.gj-big .gj-top-t b { font-size: 17px; }
 html.gj-big .gj-meter { font-size: 12.5px; }
 html.gj-big .gj-tool { font-size: 15px; }
-@media (max-width: 719px) { html.gj-big .gj-panel { max-height: 40vh; } @supports (height: 1dvh) { html.gj-big .gj-panel { max-height: 40dvh; } } }
+@media (max-width: 719px) { html.gj-big .gj-panel { max-height: var(--gj-phone-panel-max); width: calc(100% - 12px); } }
+@media (orientation: landscape) and (max-height: 520px) {
+  html.gj-big .gj-panel { width: min(56%, 600px); max-height: calc(100% - var(--gj-top-h) - 52px); }
+}
 
 /* ---------- 印刷（結末の学習記録） ---------- */
 @media print {

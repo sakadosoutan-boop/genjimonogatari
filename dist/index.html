@@ -33,6 +33,7 @@
   --gj-safe-l: env(safe-area-inset-left, 0px);
   --gj-safe-r: env(safe-area-inset-right, 0px);
   --gj-top-h: 52px;          /* 上の帯の高さ */
+  --gj-phone-panel-max: 40vh;
   --gj-reserve: 210px;       /* 絵巻の舞台の下に空けておく、文字の窓の場所 */
 }
 html.gj-big { --gj-fs: 22px; }
@@ -79,6 +80,10 @@ html.gj-noruby rt { display: none; }
 @media (orientation: portrait) and (max-width: 1024px) {
   .gj-s2-wrap { padding: 0; }
   .gj-s2-box { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; box-shadow: none; }
+}
+@supports (height: 1dvh) { :root { --gj-phone-panel-max: 40dvh; } }
+@media (orientation: portrait) and (max-width: 719px) {
+  :root { --gj-reserve: calc(var(--gj-phone-panel-max) + 6px); }
 }
 /* 横向きのスマホ：文字の窓は右。舞台は左側の高さいっぱいに */
 @media (orientation: landscape) and (max-height: 520px) {
@@ -194,7 +199,7 @@ html.gj-noruby rt { display: none; }
 .gj-kumo { display: block; width: 100%; height: 26px; fill: rgba(226, 201, 138, .6); stroke: rgba(184, 146, 58, .45); stroke-width: .8; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .7)); }
 
 /* ---------- 上の帯 ---------- */
-.gj-top { position: absolute; left: 0; right: 0; top: 0; z-index: 3; display: flex; align-items: center; gap: 6px; min-height: calc(var(--gj-safe-t) + var(--gj-top-h)); padding: calc(var(--gj-safe-t) + 3px) max(8px, var(--gj-safe-r)) 3px max(6px, var(--gj-safe-l)); color: #fff8e6;
+.gj-top { position: absolute; left: 0; right: 0; top: 0; z-index: 5; display: flex; align-items: center; gap: 6px; min-height: calc(var(--gj-safe-t) + var(--gj-top-h)); padding: calc(var(--gj-safe-t) + 3px) max(8px, var(--gj-safe-r)) 3px max(6px, var(--gj-safe-l)); color: #fff8e6;
   background: linear-gradient(180deg, rgba(36, 22, 46, .9), rgba(36, 22, 46, .66) 72%, rgba(36, 22, 46, 0)); }
 .gj-burger i, .gj-burger i::before, .gj-burger i::after { display: block; width: 18px; height: 2px; border-radius: 1px; background: currentColor; position: relative; }
 .gj-burger i { margin: 0 auto; }
@@ -248,10 +253,12 @@ html.gj-noruby rt { display: none; }
 .gj-panel-tools { position: absolute; right: 10px; top: -46px; }
 .gj-panel-tools .gj-mini { position: relative; z-index: 0; min-height: 44px; padding: 0 16px; color: #fff8e6; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); text-decoration: none; font-size: 12.5px; letter-spacing: .1em; }
 .gj-panel-tools .gj-mini::before { content: ""; position: absolute; z-index: -1; inset: 5px 0; border-radius: 18px; background: rgba(36, 22, 46, .64); border: 1px solid rgba(255, 248, 230, .3); }
-.gj-panel-body { position: relative; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 14px 20px 12px; outline: none; scroll-padding-bottom: 12px; }
+.gj-panel-scroll { position: relative; display: flex; flex-direction: column; min-height: 0; }
+.gj-panel-body { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 14px 20px 12px; outline: none; scroll-padding-bottom: 12px; }
+.gj-panel-body:focus-visible { outline: 2px solid var(--gj-kin); outline-offset: -2px; }
 .gj-more { display: none; position: absolute; right: 50%; transform: translateX(50%); bottom: 4px; font-size: 11.5px; color: #fff8e6; pointer-events: none; background: var(--gj-suou); padding: 0 12px; border-radius: 10px; letter-spacing: .1em; animation: gj-nudge 1.6s ease-in-out infinite; }
-.gj-panel::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 34px; border-radius: 0 0 10px 10px; pointer-events: none; opacity: 0; transition: opacity .2s; background: linear-gradient(180deg, rgba(247, 241, 228, 0), rgba(247, 241, 228, .96)); }
-.gj-has-more::after { opacity: 1; }
+.gj-panel-scroll::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: 1px; height: 34px; border-radius: 0 0 10px 10px; pointer-events: none; opacity: 0; transition: opacity .2s; background: linear-gradient(180deg, rgba(247, 241, 228, 0), rgba(247, 241, 228, .96)); }
+.gj-has-more .gj-panel-scroll::after { opacity: 1; }
 .gj-has-more .gj-more { display: block; z-index: 1; }
 @keyframes gj-nudge { 50% { transform: translate(50%, 2px); } }
 .gj-text-hidden .gj-panel, .gj-text-hidden .gj-top, .gj-text-hidden .gj-notes, .gj-text-hidden .gj-caption { display: none; }
@@ -263,7 +270,8 @@ html.gj-noruby rt { display: none; }
 .gj-next-a { display: inline-block; width: 0; height: 0; border: 5px solid transparent; border-left: 8px solid currentColor; border-right: 0; }
 .gj-typed .gj-next .gj-next-a { animation: gj-go 1.3s ease-in-out infinite; }
 @keyframes gj-go { 50% { transform: translateX(3px); opacity: .6; } }
-.gj-p-say .gj-nav { margin-top: 6px; }
+.gj-panel-footer { flex: none; padding: 4px 14px 6px; border-top: 1px solid var(--gj-line); }
+.gj-panel-footer .gj-nav { margin-top: 0; }
 
 /* 名札 */
 .gj-who { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 0 0 6px; }
@@ -395,19 +403,16 @@ html.gj-noruby rt { display: none; }
 .gj-p-judge .gj-opt { border-style: solid; border-color: rgba(142, 53, 72, .3); }
 .gj-p-judge .gj-opt-n { background: rgba(142, 53, 72, .1); color: var(--gj-suou); border-color: rgba(142, 53, 72, .25); }
 @media (min-width: 720px) {
-  /* 読む量の多い窓（問い・原文）は少し高く。舞台は上に残る */
-  .gj-panel.gj-p-ask, .gj-panel.gj-p-gen, .gj-panel.gj-p-game { max-height: 56vh; }
   /* 広い画面：問う原文を縦書きにして右に置く */
-  .gj-ask.has-stem { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; column-gap: 18px; }
+  .gj-ask.has-stem { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr; column-gap: 18px; }
   .gj-ask.has-stem .gj-ask-h { grid-column: 1; }
-  .gj-ask.has-stem .gj-stem-wrap { grid-column: 2; grid-row: 1 / 3; align-self: start; margin: 0; max-width: 300px; overflow-x: auto; padding: 22px 12px 12px; }
+  .gj-ask.has-stem .gj-stem-wrap { grid-column: 2; grid-row: 1 / 3; align-self: start; margin: 0; max-width: min(300px, 32vw); overflow-x: auto; padding: 22px 12px 12px; }
   .gj-ask.has-stem .gj-stem { writing-mode: vertical-rl; height: 11em; max-height: 34vh; line-height: 2; margin: 0 auto; }
   .gj-ask.has-stem .gj-ask-main { grid-column: 1; }
   .gj-ask.has-stem .gj-stem-k { left: auto; right: 10px; }
 }
 @media (max-width: 719px) {
-  .gj-panel { max-height: 40vh; bottom: calc(var(--gj-safe-b) + 6px); width: calc(100% - 12px); border-radius: 10px; }
-  @supports (height: 1dvh) { .gj-panel { max-height: 40dvh; } }
+  .gj-panel { max-height: var(--gj-phone-panel-max); bottom: calc(var(--gj-safe-b) + 6px); width: calc(100% - 12px); border-radius: 10px; }
   .gj-panel-body { padding: 10px 14px 8px; }
   .gj-panel-tools { top: -45px; right: 6px; }
   .gj-tools .wide { display: none; }
@@ -653,11 +658,14 @@ html.gj-noruby rt { display: none; }
 }
 
 /* ---------- 投影向け（文字を大きく） ---------- */
-html.gj-big .gj-panel { max-height: 54vh; width: min(1100px, calc(100% - 24px)); }
+html.gj-big .gj-panel { max-height: 50vh; width: min(1100px, calc(100% - 24px)); }
 html.gj-big .gj-top-t b { font-size: 17px; }
 html.gj-big .gj-meter { font-size: 12.5px; }
 html.gj-big .gj-tool { font-size: 15px; }
-@media (max-width: 719px) { html.gj-big .gj-panel { max-height: 40vh; } @supports (height: 1dvh) { html.gj-big .gj-panel { max-height: 40dvh; } } }
+@media (max-width: 719px) { html.gj-big .gj-panel { max-height: var(--gj-phone-panel-max); width: calc(100% - 12px); } }
+@media (orientation: landscape) and (max-height: 520px) {
+  html.gj-big .gj-panel { width: min(56%, 600px); max-height: calc(100% - var(--gj-top-h) - 52px); }
+}
 
 /* ---------- 印刷（結末の学習記録） ---------- */
 @media print {
@@ -9444,14 +9452,14 @@ html.gj-big .gj-tool { font-size: 15px; }
       '<div class="gj-notes" aria-live="polite"></div>' +
       '<div class="gj-cutin" aria-live="polite"></div><div class="gj-caption" aria-live="polite"></div>' +
       '<button type="button" class="gj-card" data-gj="card" hidden></button>' +
-      '<section class="gj-panel" aria-label="本文の窓" hidden><div class="gj-panel-tools"><button type="button" class="gj-mini" data-gj="hide" title="文字を隠して舞台を見る（H キー）">文字を隠す</button></div><div class="gj-panel-body" tabindex="-1"></div><div class="gj-more" aria-hidden="true">▼ 続き</div></section>' +
+      '<section class="gj-panel" aria-label="本文の窓" hidden><div class="gj-panel-tools"><button type="button" class="gj-mini" data-gj="hide" title="文字を隠して舞台を見る（H キー）">文字を隠す</button></div><div class="gj-panel-scroll"><div class="gj-panel-body" tabindex="0" role="region" aria-label="本文・解説"></div><div class="gj-more" aria-hidden="true">▼ 続き</div></div><footer class="gj-panel-footer" hidden></footer></section>' +
       '<button type="button" class="gj-reveal" data-gj="reveal" hidden><span>文字を表示</span></button>' +
       '<main class="gj-screen" hidden></main>' +
       '<div class="gj-fade" aria-hidden="true"></div>' +
       '<div class="gj-modal" hidden><div class="gj-modal-box" role="dialog" aria-modal="true"><header><button type="button" class="gj-mini" data-gj="modalback" hidden>← 戻る</button><h3></h3><button type="button" class="gj-ib gj-x" data-gj="closemodal" aria-label="閉じる">×</button></header><div class="gj-modal-body"></div></div></div>' +
       '<div class="gj-toast" role="status" aria-live="polite"></div>';
     el = { root: ui, stage: stage, top: ui.querySelector('.gj-top'), meters: ui.querySelector('.gj-meters'), cutin: ui.querySelector('.gj-cutin'), caption: ui.querySelector('.gj-caption'),
-      notes: ui.querySelector('.gj-notes'), card: ui.querySelector('.gj-card'), panel: ui.querySelector('.gj-panel'), body: ui.querySelector('.gj-panel-body'), reveal: ui.querySelector('.gj-reveal'),
+      notes: ui.querySelector('.gj-notes'), card: ui.querySelector('.gj-card'), panel: ui.querySelector('.gj-panel'), body: ui.querySelector('.gj-panel-body'), footer: ui.querySelector('.gj-panel-footer'), reveal: ui.querySelector('.gj-reveal'),
       screen: ui.querySelector('.gj-screen'), fade: ui.querySelector('.gj-fade'), modal: ui.querySelector('.gj-modal'), toast: ui.querySelector('.gj-toast'), sound: ui.querySelector('[data-gj="sound"]') };
     ui.addEventListener('click', onClick);
     ui.addEventListener('input', function (e) { var t = e.target; if (t && t.getAttribute && t.getAttribute('data-st') && G.Study) G.Study.handle(t.getAttribute('data-st'), t); });
@@ -9488,17 +9496,22 @@ html.gj-big .gj-tool { font-size: 15px; }
     var b = el.body, more = b.scrollHeight - b.clientHeight - b.scrollTop > 6;
     el.panel.classList.toggle('gj-has-more', more);
   }
-  function setBody(html, cls) {
+  function panelFooter(html) {
+    el.footer.innerHTML = html || '';
+    el.footer.hidden = !html;
+  }
+  function setBody(html, cls, footer) {
     stopTyping();
     el.panel.hidden = false;
     el.panel.className = 'gj-panel' + (cls ? ' ' + cls : '');
     el.body.innerHTML = html;
+    panelFooter(footer);
     el.body.scrollTop = 0;
     checkMore();
     return el.body;
   }
   function focusNext() {
-    var b = el.body.querySelector('.gj-next');
+    var b = el.footer.querySelector('.gj-next');
     if (b && b.focus) try { b.focus({ preventScroll: true }); } catch (e) {}
   }
   function nav(action, label, left) {
@@ -9726,7 +9739,7 @@ html.gj-big .gj-tool { font-size: 15px; }
     var cls = 'gj-say' + (gen ? ' gen' : '') + (narr ? ' narr' : ' line') + (m.b ? ' b-' + m.b : '');
     var tags = (gen ? '<span class="gj-tag gen" title="原文そのままの引用">原文</span>' : '') + (m.b && BUBBLE[m.b] ? '<span class="gj-tag bub b-' + m.b + '">' + BUBBLE[m.b] + '</span>' : '') + (m.label ? '<span class="gj-tag note">' + esc(m.label) + '</span>' : '');
     var wk = m.b === 'waka' ? wakaSplit(m.x) : null;
-    setBody('<div class="' + cls + '" data-tap="1">' + speakerHTML(m.w, m.pov, tags) + '<div class="gj-text" lang="ja"></div></div>' + nav('next'), 'gj-p-say' + (narr ? ' gj-p-narr' : ''));
+    setBody('<div class="' + cls + '" data-tap="1">' + speakerHTML(m.w, m.pov, tags) + '<div class="gj-text" lang="ja"></div></div>', 'gj-p-say' + (narr ? ' gj-p-narr' : ''), nav('next'));
     var node = el.body.querySelector('.gj-text');
     if (wk) {
       var U = G.Study.unitsHTML;
@@ -9743,7 +9756,7 @@ html.gj-big .gj-tool { font-size: 15px; }
     focusNext();
   }
   function gen(ch, g) {
-    setBody(G.Study.genHTML(ch, g, { compact: true }) + nav('next', '原文帳に綴じて次へ', '<span class="gj-taphint">綴じた段は、上の「原文帳」でいつでも読めます</span>'), 'gj-p-gen');
+    setBody(G.Study.genHTML(ch, g, { compact: true }), 'gj-p-gen', nav('next', '原文帳に綴じて次へ', '<span class="gj-taphint">綴じた段は、上の「原文帳」でいつでも読めます</span>'));
     focusNext();
   }
 
@@ -9824,7 +9837,8 @@ html.gj-big .gj-tool { font-size: 15px; }
     if (slot) slot.innerHTML = k;
     var hint = el.body.querySelector('.gj-hint'); if (hint) hint.hidden = true;
     var navEl = el.body.querySelector('.gj-ask-nav');
-    if (navEl) navEl.outerHTML = nav('next', '次へ', '<span class="gj-taphint">解説を読んだら、次へ</span>');
+    if (navEl) navEl.remove();
+    panelFooter(nav('next', '次へ', '<span class="gj-taphint">解説を読んだら、次へ</span>'));
     var fb = el.body.querySelector('.gj-fb');
     if (fb && fb.scrollIntoView) {
       // 選んだ札が見えるところまで戻し、その下に解説が続くことを示す
