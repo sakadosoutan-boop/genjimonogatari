@@ -761,7 +761,7 @@
         hint: '「あつし」はシク活用の形容詞。「暑い・熱い・厚い」とは別の語。「〜がち」は今も「休みがち」と言う。',
         exp: '「あつし（篤し）」は病気が重い・病気がちだ。今も「危篤」「篤い病」と言う。「里」は宮仕えの人の実家、「〜がち」は「〜することが多い」。病気になれば、宮中にとどまらず里に下がる。「もの心細げに」の「もの」は「なんとなく」。体も心も弱っていく更衣の姿。', bunpo: 'b-atsushi' },
 
-      { t: 'scene', stage: 'sato', light: 'dusk', season: 'autumn', cast: [{ id: 'koui', at: 'naka', pose: 'lie' }, { id: 'haha', at: 'nakaL', pose: 'sit' }], caption: '里の邸', fade: 'cross' },
+      { t: 'scene', stage: 'sato', light: 'dusk', season: 'autumn', cast: [{ id: 'koui', at: 'naka', pose: 'lie' }, { id: 'haha', at: 'naka', pose: 'sit' }], caption: '里の邸', fade: 'cross' },
       { x: '里の邸。母のそばで、ようやく深く息ができる。けれども三日とたたないうちに、内裏からお使いが来る。早く戻れ、と。', at: 'koui', sfx: 'mushi' },
       { w: 'haha', x: 'ありがたい仰せです。……ありがたいのですけれど。', at: 'haha' },
       { w: 'kataribe', src: 'gen', x: 'いよいよあかずあはれなるものに{思|おも}ほして、人のそしりをもえはばからせたまはず、世の{例|ためし}にもなりぬべき{御|おほん}もてなしなり。' },
@@ -928,7 +928,7 @@
   ACTS.push({
     id: 'k3', title: '第三段　玉の男御子', scope: '教科書', minutes: 15,
     nodes: [
-      { t: 'scene', stage: 'sato', light: 'dawn', season: 'spring', cast: [{ id: 'koui', at: 'naka', pose: 'lie' }, { id: 'haha', at: 'nakaL', pose: 'hold' }, { id: 'wakamiya', at: 'nakaL' }, { id: 'nyobo', at: 'shimoR', pose: 'sit' }],
+      { t: 'scene', stage: 'sato', light: 'dawn', season: 'spring', cast: [{ id: 'koui', at: 'naka', pose: 'lie' }, { id: 'haha', at: 'naka', pose: 'hold' }, { id: 'wakamiya', at: 'naka' }, { id: 'nyobo', at: 'shimoR', pose: 'sit' }],
         card: { title: '第三段　玉の男御子', sub: '私物に思ほしかしづきたまふ' }, caption: '里の邸', fade: 'white' },
       { x: 'お産は里でする。夜明け、産声があがった。母があなたの枕もとに、小さなものを抱いてくる。', at: 'haha', sfx: 'suzume' },
       { w: 'haha', x: '男御子でいらっしゃいます。……まあ、なんという。', at: 'haha' },
@@ -1226,7 +1226,7 @@
       { x: '若宮は、内裏に残していく。こんな時にも、道で「あるまじき恥」にあうかもしれない——その恥を、この子にまで見せたくはない。', at: 'koui' },
       { t: 'gen', g: 'k11' },
 
-      { t: 'scene', stage: 'seiryoden', light: 'night', season: 'summer', cast: [{ id: 'koui', at: 'naka', pose: 'lie' }, { id: 'mikado', at: 'nakaL', pose: 'sit' }, { id: 'nyobo', at: 'shimoR', pose: 'weep' }], caption: '上局・夜', fade: 'cross' },
+      { t: 'scene', stage: 'seiryoden', light: 'night', season: 'summer', cast: [{ id: 'koui', at: 'naka', pose: 'lie' }, { id: 'mikado', at: 'naka', pose: 'sit' }, { id: 'nyobo', at: 'shimoR', pose: 'weep' }], caption: '上局・夜', fade: 'cross' },
       { x: '宮中で人が亡くなることは、あってはならない。それは帝にも破れないきまり。お見送りさえ、帝にはおできにならない。', at: 'mikado' },
       { w: 'kataribe', src: 'gen', x: '{来|き}し{方|かた}行く末思し召されず、よろづのことを泣く泣く契りのたまはすれど、{御|おほん}いらへもえ聞こえたまはず、' },
       { t: 'ask', k: 'subject', w: 'kataribe', q: '「御いらへもえ聞こえたまはず」——お返事を申し上げられないのは誰か。', stem: 'よろづのことを泣く泣く契りのたまはすれど、【御いらへもえ聞こえたまはず】',
@@ -1291,7 +1291,7 @@
       { x: 'こうなると知っていたなら——。そのあとに何を言おうとしたのか。語り手は語らない。千年のあいだ、読む人がそれぞれに補ってきた。', at: 'koui' },
       { t: 'gen', g: 'k13' },
 
-      { t: 'scene', stage: 'sato', light: 'night', season: 'summer', cast: [{ id: 'koui', at: 'naka', pose: 'lie' }, { id: 'haha', at: 'nakaL', pose: 'weep' }], caption: '里の邸・夜半', fade: 'black' },
+      { t: 'scene', stage: 'sato', light: 'night', season: 'summer', cast: [{ id: 'koui', at: 'naka', pose: 'lie' }, { id: 'haha', at: 'naka', pose: 'weep' }], caption: '里の邸・夜半', fade: 'black' },
       { x: '車は、夜の都を里へ向かった。母の声がする。祈りの声がする。それが、だんだん遠くなる。', at: 'koui', sfx: 'kane' },
       { w: 'kataribe', src: 'gen', x: '「{夜半|よなか}うち過ぐるほどになむ、絶えはてたまひぬる」とて泣き騒げば、{御使|おほんつかひ}もいとあへなくて帰り参りぬ。', fx: 'dim' },
       { t: 'gen', g: 'k14' },
@@ -1315,7 +1315,7 @@
         bunpo: 'b-saikou' },
       { t: 'gen', g: 'k15' },
 
-      { t: 'scene', stage: 'sato', light: 'moon', season: 'autumn', cast: [{ id: 'haha', at: 'naka', pose: 'weep' }, { id: 'myobu', at: 'shimo', pose: 'sit' }], caption: '更衣の里邸・夕月夜', fade: 'cross' },
+      { t: 'scene', stage: 'sato', light: 'moon', season: 'autumn', cast: [{ id: 'haha', at: 'kami', pose: 'weep' }, { id: 'myobu', at: 'naka', pose: 'sit' }], caption: '更衣の里邸・夕月夜', fade: 'cross' },
       { x: '命婦の車が門を入る。草は高く伸び、野分に荒れた庭。あなたが育ち、あなたが息を引きとった家である。', sfx: 'mushi', fx: 'leaves' },
       { w: 'kataribe', src: 'gen', x: '草も高くなり、野分にいとど荒れたる心地して、月影ばかりぞ{八重葎|やへむぐら}にも障らず差し入りたる。', at: 'niwa' },
       { t: 'ask', k: 'read', q: '「月影ばかりぞ八重葎にも障らず差し入りたる」は、どんなようすを表しているか。', stem: '【月影ばかりぞ】八重葎にも障らず差し入りたる',

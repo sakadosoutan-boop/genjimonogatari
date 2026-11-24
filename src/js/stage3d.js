@@ -169,6 +169,7 @@
     S.wrap.setAttribute('data-light', lt); S.wrap.setAttribute('data-season', season); S.wrap.setAttribute('data-stage', set.stage || 'act');
     makeParticles();
     (node.cast || []).forEach(function (c) { addFig(typeof c === 'string' ? { id: c } : c); });
+    applyTouches();
     fitWide(true);
     /* 人物の用意より先に話し手が指定されていたら、用意ができたところで寄る */
     if (S.wantSpeaker && S.figs[S.wantSpeaker] && !S.speaker) speak(S.wantSpeaker);
@@ -201,6 +202,7 @@
       S.scene.add(n.root); f.dispose();
       return n;
     });
+    applyTouches();
     if (S.focusAt) { var fa = S.focusAt; S.focusAt = null; focus(fa); }
   }
 
@@ -216,6 +218,11 @@
     var sl = c.pos || set.slots[at] || [0, 0, 0, 0], same = 0;
     S.order.forEach(function (k) { if (S.figs[k][0].at === at) same++; });
     var kind = F.kindOf(id), pose = c.pose || ((set.standing || STANDS[at]) ? 'stand' : 'sit');
+    /* 幼子（chigo）を、hold の人と同じ立ち位置に置いたとき：その人の腕の中の嬰児として扱い、別の人形は立てない */
+    if (kind === 'chigo') for (i = 0; i < S.order.length; i++) {
+      var hf = S.figs[S.order[i]][0];
+      if (hf.at === at && hf.pose === 'hold' && !hf.held) { var px = heldProxy(id, S.order[i]); px.at = at; S.scene.add(px.root); S.figs[id] = [px]; S.order.push(id); return px; }
+    }
     var n = F.GROUPS[id] || 1, list = [], fs = set.figScale || 1;
     for (i = 0; i < n; i++) {
       var f = F.make(id, { variant: i, seed: i * 3.1 + S.order.length, pose: pose, quality: S.q, lite: S.q === 'lite', far: fs > 1.6 || n > 1 && fs > 1.3 });
@@ -223,12 +230,60 @@
       var off = (i ? (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 0.95 : 0) + same * 1.15, ry = sl[2] || 0, back = i ? 0.45 : 0;
       f.root.position.set(sl[0] + (Math.cos(ry) * off - Math.sin(ry) * back) * fs, sl[3] || 0, sl[1] + (-Math.sin(ry) * off - Math.cos(ry) * back) * fs);
       f.root.rotation.y = ry + (i ? (i % 2 ? -0.25 : 0.25) : 0);
+      /* 同じ立ち位置の二人目以降（枕もと・連れ立つ人）は、その立ち位置の一人目の方へ半ば向き直る */
+      if (same && !i) { var first = S.order.filter(function (k) { return S.figs[k][0].at === at && !S.figs[k][0].held; })[0], fh = first && headOf(first, new T.Vector3());
+        if (fh) { var ta = Math.atan2(fh.x - f.root.position.x, fh.z - f.root.position.z), dd = ta - ry; while (dd > PI) dd -= PI * 2; while (dd < -PI) dd += PI * 2; f.root.rotation.y = ry + K.clamp(dd, -1.3, 1.3) * 0.6; } }
       f.at = at; S.scene.add(f.root); list.push(f);
     }
     S.figs[id] = list; S.order.push(id);
     return list[0];
   }
-  function pose(id, p) { var l = S.figs[id]; if (l) l.forEach(function (f) { f.setPose(p); }); }
+  function pose(id, p, instant) {
+    var l = S.figs[id]; if (!l) return;
+    if (p === 'stroke') { var t = touchFor(id); l.forEach(function (f, i) { f.setPose(p, instant, { touch: i ? null : t && t.p }); }); setContact(id, t && t.id); return; }
+    l.forEach(function (f) { f.setPose(p, instant); });
+    if (S.contact && (S.contact.a === id)) S.contact = null;
+  }
+  /* 抱かれた嬰児の代わり（舞台の上の人物の形だけ合わせる）：位置は抱く人に、頭は腕の中の嬰児の頭に */
+  function heldProxy(id, hid) {
+    var r = new T.Group();
+    function holder() { return S.figs[hid] && S.figs[hid][0]; }
+    var p = { id: id, held: hid, hd: true, pose: 'held', root: r, seed: 0,
+      setPose: function () {}, speak: function () {},
+      update: function () { var h = holder(); if (h) { r.position.copy(h.root.position); r.rotation.copy(h.root.rotation); r.scale.copy(h.root.scale); } },
+      headWorld: function (v) { var h = holder(); if (!h) return v.copy(r.position); h.root.updateMatrixWorld(true); return (h.heldHead && h.heldHead(v)) || h.headWorld(v); },
+      dispose: function () { if (r.parent) r.parent.remove(r); } };
+    p.update();
+    return p;
+  }
+  /* 撫でる（stroke）：いちばん近い子（いなければ近い人）の頭の上を、撫でる人の pivot の座標で返す */
+  function touchFor(id) {
+    var f = S.figs[id] && S.figs[id][0]; if (!f || f.held) return null;
+    var best = null, bid = null, bd = 1e9, fp = f.root.position, sc = f.root.scale.x || 1, k;
+    for (k in S.figs) if (k !== id) S.figs[k].forEach(function (o, i) {
+      if (o.held || i) return;
+      var kd = F.kindOf(k), child = kd === 'shojo' || kd === 'warawa' || kd === 'chigo';
+      var d = Math.sqrt(Math.pow(o.root.position.x - fp.x, 2) + Math.pow(o.root.position.z - fp.z, 2)) / sc + (child ? 0 : 0.8);
+      if (d < bd) { bd = d; best = o; bid = k; }
+    });
+    if (!best || bd > 1.5) return null;
+    best.root.updateMatrixWorld(true); f.root.updateMatrixWorld(true);
+    var h = best.headWorld(new T.Vector3()); h.y += 0.085 * best.root.scale.x * (best.headScale || 1);
+    return { id: bid, p: f.pivot.worldToLocal(h) };
+  }
+  function setContact(a, b) { S.contact = b ? { a: a, b: b } : (S.contact && S.contact.a === a ? null : S.contact); }
+  function applyTouches() { S.contact = null; S.order.forEach(function (k) { var f = S.figs[k][0]; if (f.pose === 'stroke') pose(k, 'stroke', true); }); }
+  /* 寄るときに一緒に収める相手（撫でる・撫でられる二人） */
+  function mateOf(id) {
+    var c = S.contact; if (c && (c.a === id || c.b === id)) return c.a === id ? c.b : c.a;
+    /* 触れ合うほどすぐそば（体が重なる距離）に座る人も一緒に収める（手前の人の体で寄りがふさがれないように） */
+    var f = S.figs[id] && S.figs[id][0], best = null, bd = 0.8, k; if (!f) return null;
+    for (k in S.figs) if (k !== id && S.figs[k].length === 1 && !S.figs[k][0].held) {
+      var o = S.figs[k][0], d = Math.sqrt(Math.pow(o.root.position.x - f.root.position.x, 2) + Math.pow(o.root.position.z - f.root.position.z, 2)) / (f.root.scale.x || 1);
+      if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+  }
   function speak(id) {
     var prev = S.speaker; S.wantSpeaker = id || null;
     S.speaker = id && S.figs[id] ? id : null;
@@ -277,11 +332,23 @@
       var close = fs < 1.6 || !!face;   /* 遠景の舞台（後宮・北山）は全身の寄り。話し手へは胸から上 */
       /* 寄り：顔が読める胸から上（スマホでも顔が小さくならないよう、以前より詰める） */
       var rv = close ? 0.31 * sc : 1.4 * sc, rh = rv * 1.15;
-      var dist = Math.max(close ? 0.9 : 4, fitDist(rh, rv)), ty = h.y - (close ? 0.1 : 0.5) * sc;
-      /* ほかの人物も遮る物として数える（頭の高さまで） */
+      var ty = h.y - (close ? 0.1 : 0.5) * sc;
+      /* 嬰児を抱く人・抱かれた嬰児：胸の嬰児まで収める */
+      if (close && (f.pose === 'hold' || f.held)) { rv = 0.4 * sc; ty = h.y - (f.held ? 0.06 : 0.17) * sc; rh = rv * 1.15; }
+      /* 撫でる・撫でられる二人（体が重なるほどそばの二人も）：二人の頭のあいだを中心に、二人とも収まる大きさ。二人を結ぶ線を、二人の顔の向きの平均の側（前）から見る */
+      var mate = close && mateOf(at), mh = mate && headOf(mate, new T.Vector3());
+      if (mh) {
+        var mp = S.figs[mate][0].root.position, sep = Math.sqrt((mh.x - h.x) * (mh.x - h.x) + (mh.z - h.z) * (mh.z - h.z)), aa = Math.atan2(mp.x - f.root.position.x, mp.z - f.root.position.z);   /* 向きは体の位置で（礼・泣く姿勢では頭どうしが寄って向きが定まらない） */
+        var mry = S.figs[mate][0].root.rotation.y, want = Math.atan2(Math.sin(ry) + Math.sin(mry), Math.cos(ry) + Math.cos(mry)), c1 = aa + PI / 2, c2 = aa - PI / 2, d1 = Math.abs(Math.atan2(Math.sin(c1 - want), Math.cos(c1 - want))), d2 = Math.abs(Math.atan2(Math.sin(c2 - want), Math.cos(c2 - want)));
+        pref = d1 < d2 ? c1 : c2;
+        rh = Math.max(rh, sep / 2 + 0.3 * sc); rv = Math.max(rv, Math.abs(mh.y - h.y) / 2 + 0.34 * sc);
+        h = _v.set((h.x + mh.x) / 2, Math.max(h.y, mh.y), (h.z + mh.z) / 2); ty = (Math.min(headOf(at, _v2).y, mh.y) + h.y) / 2 - 0.16 * sc;
+      }
+      var dist = Math.max(close ? 0.9 : 4, fitDist(rh, rv));
+      /* ほかの人物も遮る物として数える（頭の高さまで）。抱かれた嬰児・抱く人・撫でる相手は除く */
       S.figOcc = (S.set.occ || []).slice();
-      for (var k2 in S.figs) if (k2 !== at) S.figs[k2].forEach(function (o) { var hp = headOf(k2, _v2); S.figOcc.push({ x: o.root.position.x, z: o.root.position.z, r: 0.3 * o.root.scale.x, top: hp ? hp.y + 0.12 * o.root.scale.x : 1.4 }); });
-      var els = f.pose === 'lie' ? [1.2, 1.05, 1.35] : close ? [0.24, 0.36, 0.5, 0.66] : [0.42, 0.6],   /* 伏している人は上から見下ろす */ offs = [0, 0.18, -0.18, 0.36, -0.36, 0.55, -0.55, 0.8, -0.8], best = null, i, j;
+      for (var k2 in S.figs) if (k2 !== at && k2 !== mate && k2 !== f.held && !S.figs[k2][0].held) S.figs[k2].forEach(function (o) { var hp = headOf(k2, _v2); S.figOcc.push({ x: o.root.position.x, z: o.root.position.z, r: 0.3 * o.root.scale.x, top: hp ? hp.y + 0.12 * o.root.scale.x : 1.4 }); });
+      var els = f.pose === 'lie' ? [1.2, 1.05, 1.35] : close ? [0.24, 0.36, 0.5, 0.66] : [0.42, 0.6],   /* 伏している人は上から見下ろす */ offs = mh ? [0, 0.18, -0.18, 0.36, -0.36] : [0, 0.18, -0.18, 0.36, -0.36, 0.55, -0.55, 0.8, -0.8], best = null, i, j;   /* 二人を収めるときは横からの向きを大きく崩さない */
       /* 遠い順に試し、どれも遮られるなら少しずつ近づく（顔は大きくなる） */
       [1, 0.8, 0.62].forEach(function (kd) {
         for (j = 0; j < els.length && !best; j++) for (i = 0; i < offs.length; i++) {
@@ -294,7 +361,8 @@
       });
       if (!best) best = [pref, 0.75, dist * narrow];
       S.figOcc = null;
-      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = best[2]; S.focusDy = h.y - ty;
+      S.goal.t.set(h.x, ty, h.z); S.goal.az = best[0]; S.goal.el = best[1]; S.goal.dist = best[2];
+      var h0 = headOf(at, _v2); S.focusOff = new T.Vector3(h.x - h0.x, ty - h0.y, h.z - h0.z);   /* 頭から見た目標のずれ（二人を収めるときは二人のあいだ） */
     } else if (S.set.slots[at]) {
       var s = S.set.slots[at]; S.focusAt = at;
       S.goal.t.set(s[0], (s[3] || 0) + 0.6 * fs, s[1]); S.goal.az = c.az; S.goal.el = 0.5; S.goal.dist = fd * 1.5 * narrow;
@@ -303,7 +371,7 @@
   function applyCam(dt) {
     var c = S.cam, g = S.goal, k = 1 - Math.exp(-dt * 3.2);
     /* 人物に寄っている間は、その人の今の頭の位置へ目標を追う（姿勢の変化・置き直し・高精細版への差し替えのあとも外れない） */
-    if (S.focusFig && S.figs[S.focusFig] && S.focusDy != null) { var hh = headOf(S.focusFig, _v3); if (hh) g.t.set(hh.x, hh.y - S.focusDy, hh.z); }
+    if (S.focusFig && S.figs[S.focusFig] && S.focusOff) { var hh = headOf(S.focusFig, _v3); if (hh) g.t.copy(hh).add(S.focusOff); }
     c.t.lerp(g.t, k); c.az += (g.az - c.az) * k; c.el += (g.el - c.el) * k; c.dist += (g.dist - c.dist) * k;
     var ce = Math.cos(c.el), cam = S.camera;
     cam.position.set(c.t.x + c.dist * Math.sin(c.az) * ce, c.t.y + c.dist * Math.sin(c.el), c.t.z + c.dist * Math.cos(c.az) * ce);
