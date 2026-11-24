@@ -462,7 +462,7 @@
     var male = style === 'male';
     function edge(x, y, z) {   /* 生え際からの距離（正＝髪の内側, m）。新しい頭は額の生え際を丸い弧に */
       var ax = Math.abs(x), front = smooth(-0.01, 0.05, z);
-      var hy = male ? 0.074 + (z - 0.06) * 0.5 - ax * 0.12 : hlook ? 0.074 - 8.5 * ax * ax + Math.max(0, z - 0.06) * 0.4 : 0.07 - ax * 0.42 + Math.max(0, z - 0.06) * 0.6;
+      var hy = male ? 0.074 + (z - 0.06) * 0.5 - ax * 0.12 : hlook ? 0.080 - 8.5 * ax * ax + Math.max(0, z - 0.06) * 0.4 : 0.07 - ax * 0.42 + Math.max(0, z - 0.06) * 0.6;
       var side = male ? 0.03 + Math.max(0, z - 0.02) * 0.6 : (style === 'bob' ? -0.02 : 0.028);
       var back = male ? -0.055 : -0.08;
       var lim = K.lerp(K.lerp(back, side, smooth(-0.06, -0.02, z)), Math.max(hy, side), front);
