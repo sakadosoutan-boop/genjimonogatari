@@ -8,7 +8,8 @@
   var KEY = 'genji:v1';
   var SCORED = { read: 1, subject: 1, keigo: 1, kokoro: 1, waka: 1 };   // 読解率に数える問い（judge は数えない）
   var UI, meta, st = null, cur = null, mode = 'boot', epoch = 0;
-  var IDX = {}, lastScene = null, cardNext = null, pendingSay = null, activity = null, screenNow = null, hops = 0, eraseArmed = false;
+  var review = null;
+  var IDX = {}, lastScene = null, cardNext = null, pendingSay = null, activity = null, screenNow = null, eraseArmed = false;
 
   /* ---------- 保存 ---------- */
   function blankMeta() {
@@ -50,7 +51,7 @@
     var ch = G.chapters[chId];
     if (!ch) return null;
     if (IDX[chId] && IDX[chId].ch === ch) return IDX[chId];
-    var ix = IDX[chId] = { ch: ch, keys: [], map: {}, first: {} };
+    var ix = IDX[chId] = { ch: ch, keys: [], map: Object.create(null), first: Object.create(null) };
     (ch.acts || []).forEach(function (act, ai) {
       (act.nodes || []).forEach(function (n, i) {
         var key = n.id || (act.id + '#' + i);
@@ -66,7 +67,7 @@
   function nextOf(key) {
     var ix = index(st.ch), e = ix.map[key];
     if (!e) return null;
-    if (e.n.next && ix.map[e.n.next]) return e.n.next;
+    if (e.n.next !== undefined) return e.n.next;
     var at = ix.keys.indexOf(key);
     return ix.keys[at + 1] || null;
   }
@@ -186,31 +187,47 @@
   function povId(w) { var ch = chapterNow(); return w === 'you' ? (ch && ch.pov) || null : w || null; }
 
   /* ---------- 進行 ---------- */
+  function brokenStory(detail) {
+    var chId = st.ch, from = st.node || '開始';
+    warn('物語データ ' + chId + ' / ' + from + '：' + detail);
+    mode = 'error';
+    showChapter(chId);
+    UI.modal({ id: 'story-error', title: '物語を進められません', html: '<p>物語データに不備があります。目次から別の段を選べます。</p>' });
+  }
   function go(key, resuming) {
     if (!st) return;
-    var e = key && entry(key);
-    if (!e) return finish(null);
-    if (++hops > 400) { warn('分岐が堂々めぐりになっています：' + key); return finish(null); }
-    var ch = chapterNow(), cm = chMeta(st.ch);
-    if (st.act && st.act !== e.act.id && !resuming) cm.cleared[st.act] = 1;      // 段を読み終えた
-    if (st.act !== e.act.id && !st.log.some(function (l) { return l[3] === 'act' && l[1] === e.act.title; })) logLine('', e.act.title, 0, 'act');
-    st.act = e.act.id;
-    st.node = key; cur = e.n;
+    var ch = chapterNow(), cm = chMeta(st.ch), act = st.act, cleared = [];
+    var e, n, t;
+    // 制御ノードをたどり、表示先が確かめられてから段の読了を記録する。
+    for (var count = 0; count < 400; count++) {
+      e = key && entry(key);
+      if (!e) return brokenStory('遷移先 ' + (key || '（未指定）') + ' がありません');
+      n = e.n; t = n.t === undefined ? 'say' : n.t;
+      if (act && act !== e.act.id && !resuming) cleared.push(act);
+      act = e.act.id;
+      if (t === 'if') key = test(n) ? n.go : (n.el || nextOf(key));
+      else if (t === 'set') { apply(n); key = nextOf(key); }
+      else if (t === 'go') key = n.to;
+      else break;
+    }
+    if (count === 400) return brokenStory('分岐が堂々めぐりになっています：' + key);
+    if (['scene', 'say', 'gen', 'ask', 'game', 'end'].indexOf(t) < 0) return brokenStory(key + ' のノード種別 ' + t + ' は不明です');
+    if (t === 'end' && !(ch.endings && Object.prototype.hasOwnProperty.call(ch.endings, n.e) && ch.endings[n.e])) return brokenStory(key + ' の結末 ' + n.e + ' がありません');
+    if (t === 'gen' && !G.Study.findGen(ch, n.g)) return brokenStory(key + ' の原文 ' + n.g + ' がありません');
+
+    cleared.forEach(function (id) { cm.cleared[id] = 1; });
+    if (st.act !== act && !st.log.some(function (l) { return l[3] === 'act' && l[1] === e.act.title; })) logLine('', e.act.title, 0, 'act');
+    st.act = act;
+    st.node = key; cur = n;
     if (!resuming) st.phase = null;
     UI.top({ ch: ch.title, act: e.act.title });
-    var n = e.n, t = n.t || 'say';
-    if (t === 'if') return go(test(n) ? n.go : (n.el || nextOf(key)));
-    if (t === 'set') { apply(n); return go(nextOf(key)); }
-    if (t === 'go') return go(n.to);
-    hops = 0;
-    if (t !== 'end') persist();
+    if (t === 'end') return finish(n.e);
+    persist();
     if (t === 'scene') return doScene(n, key);
     if (t === 'say') return doSay(n);
-    if (t === 'gen') return doGen(n, key);
+    if (t === 'gen') return doGen(n);
     if (t === 'ask') return doAsk(n, key, resuming);
-    if (t === 'game') return doGame(n, key);
-    if (t === 'end') return finish(n.e);
-    go(nextOf(key));     // 知らない種類のノードは読み飛ばす
+    return doGame(n, key);
   }
   function doScene(n, key) {
     mode = 'scene';
@@ -252,9 +269,8 @@
     if (isNew && !quiet) UI.toast('原文帳に綴じました');
     return true;
   }
-  function doGen(n, key) {
+  function doGen(n) {
     var ch = chapterNow(), g = G.Study.findGen(ch, n.g);
-    if (!g) return go(nextOf(key));
     mode = 'gen';
     stg('speak', null);
     bind(n.g, true);
@@ -341,6 +357,36 @@
     UI.showHint();
   }
 
+  /* ---------- 誤答の復習 ---------- */
+  function drawReview(opening) {
+    var r = review, e = r.items[r.at], n = e && e.n;
+    var html = UI.reviewHTML({ act: e && e.act.title, n: n, at: r.at, total: r.items.length, correct: r.correct,
+      order: n && G.Games.shuffle(n.o.map(function (o, i) { return i; }), e.key + ':' + r.seed),
+      choice: r.choice, hinted: r.hinted, pov: G.chapters[r.ch].pov });
+    if (opening) UI.modal({ id: 'review', title: G.chapters[r.ch].title + '　読み違えた問いの復習', html: html });
+    else UI.modalBody(html);
+    UI.focusReview();
+  }
+  function openReview(chId) {
+    var ix = index(chId), missed = chMeta(chId).missed;
+    review = { ch: chId, at: 0, correct: 0, choice: null, hinted: false, seed: Math.floor(Math.random() * 1e9),
+      items: ix.keys.map(function (key) { return ix.map[key]; }).filter(function (e) {
+        return missed[e.key] > 0 && e.n.t === 'ask' && SCORED[e.n.k];
+      }) };
+    drawReview(true);
+  }
+  function reviewPick(i) {
+    var r = review, e = r.items[r.at];
+    if (!e || r.choice !== null || !e.n.o[i]) return;
+    r.choice = i;
+    if (e.n.o[i].ok) {
+      r.correct++;
+      delete chMeta(r.ch).missed[e.key];
+      saveMeta();
+    }
+    drawReview(false);
+  }
+
   /* ---------- 遊び ---------- */
   function doGame(n, key) {
     mode = 'game';
@@ -420,11 +466,11 @@
 
   /* ---------- 結末 ---------- */
   function finish(eid) {
-    var ch = chapterNow(), cm = chMeta(st.ch), e = eid && ch.endings ? ch.endings[eid] : null;
+    var ch = chapterNow(), cm = chMeta(st.ch), e = ch.endings[eid];
     stopActivity();
     stg('arrows', null); stg('speak', null);
     if (st.act) cm.cleared[st.act] = 1;
-    if (eid && e) cm.endings[eid] = 1;
+    cm.endings[eid] = 1;
     mode = 'end';
     cm.save = null;
     cm.q = (cm.q || 0) + st.q; cm.ok = (cm.ok || 0) + st.ok;
@@ -445,7 +491,7 @@
     epoch++;
     stopActivity();
     if (root.GJ_BGM) root.GJ_BGM.stop();
-    if (st && mode !== 'end' && mode !== 'title') persist();
+    if (st && mode !== 'end' && mode !== 'title' && mode !== 'error') persist();
     UI.closeModal(); UI.card(null); UI.cutin(null); UI.caption(null); UI.textHidden(false);
     stg('arrows', null);
   }
@@ -477,7 +523,7 @@
   }
   function begin(state, resuming) {
     epoch++;
-    st = state; cur = null; hops = 0; lastScene = null; screenNow = null;
+    st = state; cur = null; lastScene = null; screenNow = null;
     meta.last = st.ch;
     UI.hideScreen(); UI.closeModal();
     UI.meters(meterList(), classroom());
@@ -533,6 +579,18 @@
   }
   var ACT = {
     advance: advance, next: advance, card: advance,
+    review: function (b) { openReview(b.getAttribute('data-ch')); },
+    'review-pick': function (b) { if (UI.modalId() === 'review') reviewPick(+b.getAttribute('data-i')); },
+    'review-hint': function () {
+      if (UI.modalId() !== 'review' || review.choice !== null) return;
+      review.hinted = true;
+      drawReview(false);
+    },
+    'review-next': function () {
+      if (UI.modalId() !== 'review' || review.choice === null) return;
+      review.at++; review.choice = null; review.hinted = false;
+      drawReview(false);
+    },
     pick: function (b) { pick(+b.getAttribute('data-i')); },
     hint: hint,
     title: showTitle,
