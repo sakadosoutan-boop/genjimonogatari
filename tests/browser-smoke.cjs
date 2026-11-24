@@ -12,6 +12,8 @@ const KEY = 'genji:v1';
 
 async function open(browser, viewport, view) {
   const p = await browser.newPage({ viewport, hasTouch: viewport.width < 600, isMobile: viewport.width < 600 });
+  // 3D は CI（GPU なしのソフトウェア描画）で 1 コマ数秒かかる。押す操作の待ちを長めにとる（実機の速さとは別）
+  if (view === '3d') p.setDefaultTimeout(120000);
   const errors = [];
   p.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   // 別の担当が作成中のファイルが無いときの「読み込めない」は数えない（それでも起動することを見る）
