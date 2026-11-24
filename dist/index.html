@@ -9590,6 +9590,9 @@ html.gj-big .gj-tool { font-size: 15px; }
       '<p class="gj-title-note">記録はこの端末のブラウザにだけ保存されます。原文の引用は紫の明朝、創作の地の文・台詞は墨色で区別しています。</p></div>';
     screen(k, 'gj-s-title');
   }
+  function reviewButton(chId) {
+    return '<button type="button" class="gj-btn" data-gj="review" data-ch="' + esc(chId) + '">読み違えた問いを復習</button>';
+  }
   function chapter(m) {
     var c = m.ch, nAct = 0;
     var k = '<div class="gj-chapter"><button type="button" class="gj-mini" data-gj="title">← 表紙へ</button>' +
@@ -9597,7 +9600,7 @@ html.gj-big .gj-tool { font-size: 15px; }
       '<p class="gj-pov">' + (G.Study ? G.Study.sealHTML(c.pov) : '') + esc(c.povNote || '') + '</p>' +
       '<p class="gj-intro">' + rich(c.intro || '') + '</p><div class="gj-chapter-go">' +
       (m.hasSave ? '<button type="button" class="gj-btn gold" data-gj="continue" data-ch="' + esc(c.id) + '">続きから<small>' + esc(m.where || '') + '</small></button>' : '') +
-      '<button type="button" class="gj-btn' + (m.hasSave ? '' : ' gold') + '" data-gj="start" data-ch="' + esc(c.id) + '">はじめから読む</button></div>' +
+      '<button type="button" class="gj-btn' + (m.hasSave ? '' : ' gold') + '" data-gj="start" data-ch="' + esc(c.id) + '">はじめから読む</button>' + reviewButton(c.id) + '</div>' +
       '<h2 class="gj-h">目次<small>' + (m.classroom ? '授業モード：どの段からでも開けます' : '挑戦モード：前の段を読むと次が開きます') + '</small></h2><ol class="gj-acts">' + m.acts.map(function (a) {
         var t = String(a.title || ''), sp = t.split(/[　\s]+/), head = sp.length > 1 ? sp[0] : '', name = sp.length > 1 ? sp.slice(1).join(' ') : t;
         if (head) nAct++;
@@ -9627,7 +9630,7 @@ html.gj-big .gj-tool { font-size: 15px; }
       return '<li class="' + c + '"><i class="gj-pk" aria-label="' + (c === 'ok' ? '一度目で正しく読めた' : c === 'ng' ? '読み直した' : '決断') + '">' + (c === 'ok' ? '○' : c === 'ng' ? '△' : '◇') + '</i><div><small>' + esc(ASK[p.k] || '') + '</small><p>' + esc(p.q) + '</p><b>' + esc(p.a) + '</b>' + (p.k !== 'judge' && !p.ok && p.right ? '<span>本文の読み：' + esc(p.right) + '</span>' : '') + '</div></li>';
     }).join('') + '</ol>';
     if (m.furikaeri && m.furikaeri.length) k += '<h2 class="gj-h">ふり返り<small>話し合ってみよう・書いてみよう</small></h2><ol class="gj-furikaeri">' + m.furikaeri.map(function (f) { return '<li><p>' + rich(f) + '</p><div class="gj-write" aria-hidden="true"></div></li>'; }).join('') + '</ol>';
-    k += '<div class="gj-end-out"><button type="button" class="gj-btn" data-gj="copy">学習記録をコピー</button><button type="button" class="gj-btn" data-gj="print">印刷する</button><span class="gj-title-note">ノートや提出用の文書に貼りつけられます。</span></div>';
+    k += '<div class="gj-end-out">' + reviewButton(m.ch.id) + '<button type="button" class="gj-btn" data-gj="copy">学習記録をコピー</button><button type="button" class="gj-btn" data-gj="print">印刷する</button><span class="gj-title-note">ノートや提出用の文書に貼りつけられます。</span></div>';
     k += '<div class="gj-title-foot"><button type="button" class="gj-btn gold" data-gj="chapter" data-ch="' + esc(m.ch.id) + '">目次へ</button><button type="button" class="gj-btn" data-gj="book" data-ch="' + esc(m.ch.id) + '">原文帳で読み直す</button><button type="button" class="gj-btn" data-gj="title">表紙へ</button></div></div>';
     screen(k, 'gj-s-end');
     ending.last = m;
@@ -9748,20 +9751,26 @@ html.gj-big .gj-tool { font-size: 15px; }
   }
 
   /* ---------- 文字の窓：問い ---------- */
-  function optHTML(n, o, i, k) {
+  function optHTML(n, o, i, k, reviewChoice) {
     var inner = n.k === 'subject' && o.c
       ? (G.Study ? G.Study.plate(o.c) : esc(charOf(o.c).name)) + (o.x ? '<span class="gj-opt-x">' + rich(o.x) + '</span>' : '')
       : '<span class="gj-opt-x">' + rich(o.x) + '</span>';
-    return '<button type="button" class="gj-opt" data-gj="pick" data-i="' + i + '"' + (n.k === 'subject' && o.c ? ' style="--c:' + esc(colorOf(o.c)) + '"' : '') + '><span class="gj-opt-n">' + NUM.charAt(k) + '</span>' + inner + '<span class="gj-opt-m" aria-hidden="true"></span></button>';
+    var review = reviewChoice !== undefined, answered = review && reviewChoice !== null;
+    var mark = answered && (o.ok || i === reviewChoice) ? (o.ok ? ' ok' : ' ng') : '';
+    return '<button type="button" class="gj-opt' + mark + (answered && i === reviewChoice ? ' chosen' : '') + '" data-gj="' +
+      (review ? 'review-pick' : 'pick') + '" data-i="' + i + '"' + (answered ? ' disabled' : '') + (n.k === 'subject' && o.c ? ' style="--c:' + esc(colorOf(o.c)) + '"' : '') + '><span class="gj-opt-n">' + NUM.charAt(k) + '</span>' + inner + '<span class="gj-opt-m" aria-hidden="true"></span></button>';
   }
   function legendHTML() {
     var K = (G.Study && G.Study.keigoName) || { sonkei: '尊敬', kenjo: '謙譲', teinei: '丁寧' };
     return '<div class="gj-legend" aria-label="敬語の色">' + Object.keys(K).map(function (k) { return '<span class="k-' + k + '"><i></i>' + K[k] + '</span>'; }).join('') + '<small>矢印は「敬う人 → 敬われる人」</small></div>';
   }
+  function questionHTML(n, pov) {
+    return '<div class="gj-ask-h"><span class="gj-tag k-' + esc(n.k) + '">' + (ASK[n.k] || '問い') + '</span>' +
+      (n.w ? speakerHTML(n.w, pov) : '') + '<p class="gj-ask-q">' + rich(n.q) + '</p></div>' +
+      (n.stem ? '<div class="gj-stem-wrap"><span class="gj-stem-k">問う原文</span><div class="gj-stem" lang="ja">' + rich(n.stem) + '</div></div>' : '');
+  }
   function ask(n, m) {
-    var k = '<div class="gj-ask k-' + esc(n.k) + (n.stem ? ' has-stem' : '') + '"><div class="gj-ask-h"><span class="gj-tag k-' + esc(n.k) + '">' + (ASK[n.k] || '問い') + '</span>' +
-      (n.w ? speakerHTML(n.w, m.pov) : '') + '<p class="gj-ask-q">' + rich(n.q) + '</p></div>' +
-      (n.stem ? '<div class="gj-stem-wrap"><span class="gj-stem-k">問う原文</span><div class="gj-stem" lang="ja">' + rich(n.stem) + '</div></div>' : '') +
+    var k = '<div class="gj-ask k-' + esc(n.k) + (n.stem ? ' has-stem' : '') + '">' + questionHTML(n, m.pov) +
       '<div class="gj-ask-main">' + (n.k === 'keigo' ? legendHTML() : '') + '<div class="gj-opts' + (n.k === 'subject' ? ' subject' : '') + '">' + m.order.map(function (i, kk) { return optHTML(n, n.o[i], i, kk); }).join('') + '</div>' +
       '<div class="gj-fb-slot"></div>' +
       (n.hint ? '<div class="gj-hint" hidden><b>着眼点</b><p>' + rich(n.hint) + '</p></div>' : '') +
@@ -9803,6 +9812,16 @@ html.gj-big .gj-tool { font-size: 15px; }
     if (buf) out.push(buf);
     return '<div class="gj-exp">' + out.map(function (p) { return '<p>' + rich(p) + '</p>'; }).join('') + '</div>';
   }
+  function feedbackHTML(n, m) {
+    var head = m.ok ? (m.retried ? '読み直して、たどり着いた' : n.k === 'kokoro' ? '本文に根拠のある読み' : '読み解いた') : '本文の読みを確かめよう';
+    var icon = m.ok ? (m.retried ? '○' : '◎') : '△';
+    var right = n.o.filter(function (o) { return o.ok; }).map(function (o) { return o.c && !o.x ? charOf(o.c).name : G.plain(o.x || ''); });
+    return '<div class="gj-fb ' + (m.ok ? 'ok' : 'ng') + (m.retried ? ' retried' : '') + '" role="status"><div class="gj-fb-h"><i class="gj-fb-i" aria-hidden="true">' + icon + '</i>' + head + '</div>' +
+      (!m.ok && right.length ? '<p class="gj-fb-right">本文の読み：<b>' + right.map(esc).join('／') + '</b></p>' : '') +
+      (n.arrows && n.arrows.length && G.Study ? '<div class="gj-arrows"><span class="gj-arrows-k">敬意の方向</span>' + n.arrows.map(G.Study.arrowHTML).join('') + '</div>' : '') +
+      (n.exp ? expHTML(n.exp) : '') +
+      (n.bunpo && G.bunpo && G.bunpo[n.bunpo] ? '<button type="button" class="gj-chip link" data-st="zukan" data-id="' + esc(n.bunpo) + '"><i class="gj-zk-i" aria-hidden="true">図</i>図鑑で確かめる：' + rich(G.bunpo[n.bunpo].title) + '</button>' : '') + '</div>';
+  }
   /** 答えたあと：正解と解説。keigo は「誰から誰へ・どの種類」の帯を出す。 */
   function askFeedback(n, m) {
     Array.prototype.forEach.call(el.body.querySelectorAll('.gj-opt'), function (b) {
@@ -9812,16 +9831,8 @@ html.gj-big .gj-tool { font-size: 15px; }
       if (i === m.choice) b.classList.add('chosen');
     });
     var opts = el.body.querySelector('.gj-opts'); if (opts) opts.classList.add('answered');
-    var head = m.ok ? (m.retried ? '読み直して、たどり着いた' : n.k === 'kokoro' ? '本文に根拠のある読み' : '読み解いた') : '本文の読みを確かめよう';
-    var icon = m.ok ? (m.retried ? '○' : '◎') : '△';
-    var right = n.o.filter(function (o) { return o.ok; }).map(function (o) { return o.c && !o.x ? charOf(o.c).name : G.plain(o.x || ''); });
-    var k = '<div class="gj-fb ' + (m.ok ? 'ok' : 'ng') + (m.retried ? ' retried' : '') + '" role="status"><div class="gj-fb-h"><i class="gj-fb-i" aria-hidden="true">' + icon + '</i>' + head + '</div>' +
-      (!m.ok && right.length ? '<p class="gj-fb-right">本文の読み：<b>' + right.map(esc).join('／') + '</b></p>' : '') +
-      (n.arrows && n.arrows.length && G.Study ? '<div class="gj-arrows"><span class="gj-arrows-k">敬意の方向</span>' + n.arrows.map(G.Study.arrowHTML).join('') + '</div>' : '') +
-      (n.exp ? expHTML(n.exp) : '') +
-      (n.bunpo && G.bunpo && G.bunpo[n.bunpo] ? '<button type="button" class="gj-chip link" data-st="zukan" data-id="' + esc(n.bunpo) + '"><i class="gj-zk-i" aria-hidden="true">図</i>図鑑で確かめる：' + rich(G.bunpo[n.bunpo].title) + '</button>' : '') + '</div>';
     var slot = el.body.querySelector('.gj-fb-slot');
-    if (slot) slot.innerHTML = k;
+    if (slot) slot.innerHTML = feedbackHTML(n, m);
     var hint = el.body.querySelector('.gj-hint'); if (hint) hint.hidden = true;
     var navEl = el.body.querySelector('.gj-ask-nav');
     if (navEl) navEl.outerHTML = nav('next', '次へ', '<span class="gj-taphint">解説を読んだら、次へ</span>');
@@ -9835,6 +9846,29 @@ html.gj-big .gj-tool { font-size: 15px; }
     sfx(m.ok ? 'ok' : 'ng');
     checkMore(); focusNext();
   }
+  function reviewHTML(m) {
+    if (!m.n) {
+      var result = m.total ? m.total + '問中' + m.correct + '問正解。' +
+        (m.correct < m.total ? '読み違えた問いは次の復習に残ります。' : '今回の問いをすべて読み解きました。') : '復習する問いはありません。';
+      return '<p role="status">' + result + '</p><button type="button" class="gj-btn" data-gj="closemodal">復習を閉じる</button>';
+    }
+    var n = m.n, answered = m.choice !== null;
+    var k = '<p class="gj-title-note">' + (m.at + 1) + '／' + m.total + '問　' + esc(m.act) + '</p>' +
+      '<div class="gj-ask">' + questionHTML(n, m.pov) + '<div class="gj-opts' + (answered ? ' answered' : '') + (n.k === 'subject' ? ' subject' : '') + '">' +
+      m.order.map(function (i, k) { return optHTML(n, n.o[i], i, k, m.choice); }).join('') + '</div>';
+    if (answered) k += feedbackHTML(n, { ok: !!n.o[m.choice].ok }) +
+      nav('review-next', m.at + 1 < m.total ? '次の問いへ' : '結果を見る', '<span></span>');
+    else if (m.hinted) k += '<div class="gj-hint"><b>着眼点</b><p>' + rich(n.hint) + '</p></div>';
+    else if (n.hint) k += '<div class="gj-nav"><button type="button" class="gj-btn" data-gj="review-hint">ヒント（着眼点）</button></div>';
+    return k + '</div>';
+  }
+  function focusReview() {
+    var b = el.modal.querySelector('.gj-modal-body button[data-gj="review-next"], .gj-modal-body button[data-gj="closemodal"], .gj-opt:not([disabled])');
+    if (b) b.focus({ preventScroll: true });
+    var reveal = el.modal.querySelector('.gj-fb, .gj-hint');
+    if (reveal && reveal.scrollIntoView) reveal.scrollIntoView({ block: 'nearest' });
+  }
+
   /** DOM の遊び（並べ・結び）を入れる場所。 */
   function gameHost() { return setBody('<div class="gj-game-host"></div>', 'gj-p-game').firstChild; }
   function panel(on) { el.panel.hidden = !on; if (!on) stopTyping(); }
@@ -10033,6 +10067,7 @@ html.gj-big .gj-tool { font-size: 15px; }
   G.UI = {
     init: init, el: function () { return el; }, applySettings: applySettings, top: top, meters: meters, bumpMeter: bumpMeter, meterNote: meterNote,
     title: title, chapter: chapter, ending: ending, hideScreen: hideScreen, summaryText: summaryText, copyText: copyText,
+    reviewHTML: reviewHTML, focusReview: focusReview,
     say: say, finishTyping: finishTyping, gen: gen, ask: ask, askRetry: askRetry, askFeedback: askFeedback, showHint: showHint,
     gameHost: gameHost, panel: panel, textHidden: textHidden,
     cutin: cutin, caption: caption, card: card, fade: fade, toast: toast,
@@ -10117,7 +10152,8 @@ html.gj-big .gj-tool { font-size: 15px; }
   var KEY = 'genji:v1';
   var SCORED = { read: 1, subject: 1, keigo: 1, kokoro: 1, waka: 1 };   // 読解率に数える問い（judge は数えない）
   var UI, meta, st = null, cur = null, mode = 'boot', epoch = 0;
-  var IDX = {}, lastScene = null, cardNext = null, pendingSay = null, activity = null, screenNow = null, hops = 0, eraseArmed = false;
+  var review = null;
+  var IDX = {}, lastScene = null, cardNext = null, pendingSay = null, activity = null, screenNow = null, eraseArmed = false;
 
   /* ---------- 保存 ---------- */
   function blankMeta() {
@@ -10159,7 +10195,7 @@ html.gj-big .gj-tool { font-size: 15px; }
     var ch = G.chapters[chId];
     if (!ch) return null;
     if (IDX[chId] && IDX[chId].ch === ch) return IDX[chId];
-    var ix = IDX[chId] = { ch: ch, keys: [], map: {}, first: {} };
+    var ix = IDX[chId] = { ch: ch, keys: [], map: Object.create(null), first: Object.create(null) };
     (ch.acts || []).forEach(function (act, ai) {
       (act.nodes || []).forEach(function (n, i) {
         var key = n.id || (act.id + '#' + i);
@@ -10175,7 +10211,7 @@ html.gj-big .gj-tool { font-size: 15px; }
   function nextOf(key) {
     var ix = index(st.ch), e = ix.map[key];
     if (!e) return null;
-    if (e.n.next && ix.map[e.n.next]) return e.n.next;
+    if (e.n.next !== undefined) return e.n.next;
     var at = ix.keys.indexOf(key);
     return ix.keys[at + 1] || null;
   }
@@ -10295,31 +10331,47 @@ html.gj-big .gj-tool { font-size: 15px; }
   function povId(w) { var ch = chapterNow(); return w === 'you' ? (ch && ch.pov) || null : w || null; }
 
   /* ---------- 進行 ---------- */
+  function brokenStory(detail) {
+    var chId = st.ch, from = st.node || '開始';
+    warn('物語データ ' + chId + ' / ' + from + '：' + detail);
+    mode = 'error';
+    showChapter(chId);
+    UI.modal({ id: 'story-error', title: '物語を進められません', html: '<p>物語データに不備があります。目次から別の段を選べます。</p>' });
+  }
   function go(key, resuming) {
     if (!st) return;
-    var e = key && entry(key);
-    if (!e) return finish(null);
-    if (++hops > 400) { warn('分岐が堂々めぐりになっています：' + key); return finish(null); }
-    var ch = chapterNow(), cm = chMeta(st.ch);
-    if (st.act && st.act !== e.act.id && !resuming) cm.cleared[st.act] = 1;      // 段を読み終えた
-    if (st.act !== e.act.id && !st.log.some(function (l) { return l[3] === 'act' && l[1] === e.act.title; })) logLine('', e.act.title, 0, 'act');
-    st.act = e.act.id;
-    st.node = key; cur = e.n;
+    var ch = chapterNow(), cm = chMeta(st.ch), act = st.act, cleared = [];
+    var e, n, t;
+    // 制御ノードをたどり、表示先が確かめられてから段の読了を記録する。
+    for (var count = 0; count < 400; count++) {
+      e = key && entry(key);
+      if (!e) return brokenStory('遷移先 ' + (key || '（未指定）') + ' がありません');
+      n = e.n; t = n.t === undefined ? 'say' : n.t;
+      if (act && act !== e.act.id && !resuming) cleared.push(act);
+      act = e.act.id;
+      if (t === 'if') key = test(n) ? n.go : (n.el || nextOf(key));
+      else if (t === 'set') { apply(n); key = nextOf(key); }
+      else if (t === 'go') key = n.to;
+      else break;
+    }
+    if (count === 400) return brokenStory('分岐が堂々めぐりになっています：' + key);
+    if (['scene', 'say', 'gen', 'ask', 'game', 'end'].indexOf(t) < 0) return brokenStory(key + ' のノード種別 ' + t + ' は不明です');
+    if (t === 'end' && !(ch.endings && Object.prototype.hasOwnProperty.call(ch.endings, n.e) && ch.endings[n.e])) return brokenStory(key + ' の結末 ' + n.e + ' がありません');
+    if (t === 'gen' && !G.Study.findGen(ch, n.g)) return brokenStory(key + ' の原文 ' + n.g + ' がありません');
+
+    cleared.forEach(function (id) { cm.cleared[id] = 1; });
+    if (st.act !== act && !st.log.some(function (l) { return l[3] === 'act' && l[1] === e.act.title; })) logLine('', e.act.title, 0, 'act');
+    st.act = act;
+    st.node = key; cur = n;
     if (!resuming) st.phase = null;
     UI.top({ ch: ch.title, act: e.act.title });
-    var n = e.n, t = n.t || 'say';
-    if (t === 'if') return go(test(n) ? n.go : (n.el || nextOf(key)));
-    if (t === 'set') { apply(n); return go(nextOf(key)); }
-    if (t === 'go') return go(n.to);
-    hops = 0;
-    if (t !== 'end') persist();
+    if (t === 'end') return finish(n.e);
+    persist();
     if (t === 'scene') return doScene(n, key);
     if (t === 'say') return doSay(n);
-    if (t === 'gen') return doGen(n, key);
+    if (t === 'gen') return doGen(n);
     if (t === 'ask') return doAsk(n, key, resuming);
-    if (t === 'game') return doGame(n, key);
-    if (t === 'end') return finish(n.e);
-    go(nextOf(key));     // 知らない種類のノードは読み飛ばす
+    return doGame(n, key);
   }
   function doScene(n, key) {
     mode = 'scene';
@@ -10361,9 +10413,8 @@ html.gj-big .gj-tool { font-size: 15px; }
     if (isNew && !quiet) UI.toast('原文帳に綴じました');
     return true;
   }
-  function doGen(n, key) {
+  function doGen(n) {
     var ch = chapterNow(), g = G.Study.findGen(ch, n.g);
-    if (!g) return go(nextOf(key));
     mode = 'gen';
     stg('speak', null);
     bind(n.g, true);
@@ -10450,6 +10501,36 @@ html.gj-big .gj-tool { font-size: 15px; }
     UI.showHint();
   }
 
+  /* ---------- 誤答の復習 ---------- */
+  function drawReview(opening) {
+    var r = review, e = r.items[r.at], n = e && e.n;
+    var html = UI.reviewHTML({ act: e && e.act.title, n: n, at: r.at, total: r.items.length, correct: r.correct,
+      order: n && G.Games.shuffle(n.o.map(function (o, i) { return i; }), e.key + ':' + r.seed),
+      choice: r.choice, hinted: r.hinted, pov: G.chapters[r.ch].pov });
+    if (opening) UI.modal({ id: 'review', title: G.chapters[r.ch].title + '　読み違えた問いの復習', html: html });
+    else UI.modalBody(html);
+    UI.focusReview();
+  }
+  function openReview(chId) {
+    var ix = index(chId), missed = chMeta(chId).missed;
+    review = { ch: chId, at: 0, correct: 0, choice: null, hinted: false, seed: Math.floor(Math.random() * 1e9),
+      items: ix.keys.map(function (key) { return ix.map[key]; }).filter(function (e) {
+        return missed[e.key] > 0 && e.n.t === 'ask' && SCORED[e.n.k];
+      }) };
+    drawReview(true);
+  }
+  function reviewPick(i) {
+    var r = review, e = r.items[r.at];
+    if (!e || r.choice !== null || !e.n.o[i]) return;
+    r.choice = i;
+    if (e.n.o[i].ok) {
+      r.correct++;
+      delete chMeta(r.ch).missed[e.key];
+      saveMeta();
+    }
+    drawReview(false);
+  }
+
   /* ---------- 遊び ---------- */
   function doGame(n, key) {
     mode = 'game';
@@ -10529,11 +10610,11 @@ html.gj-big .gj-tool { font-size: 15px; }
 
   /* ---------- 結末 ---------- */
   function finish(eid) {
-    var ch = chapterNow(), cm = chMeta(st.ch), e = eid && ch.endings ? ch.endings[eid] : null;
+    var ch = chapterNow(), cm = chMeta(st.ch), e = ch.endings[eid];
     stopActivity();
     stg('arrows', null); stg('speak', null);
     if (st.act) cm.cleared[st.act] = 1;
-    if (eid && e) cm.endings[eid] = 1;
+    cm.endings[eid] = 1;
     mode = 'end';
     cm.save = null;
     cm.q = (cm.q || 0) + st.q; cm.ok = (cm.ok || 0) + st.ok;
@@ -10554,7 +10635,7 @@ html.gj-big .gj-tool { font-size: 15px; }
     epoch++;
     stopActivity();
     if (root.GJ_BGM) root.GJ_BGM.stop();
-    if (st && mode !== 'end' && mode !== 'title') persist();
+    if (st && mode !== 'end' && mode !== 'title' && mode !== 'error') persist();
     UI.closeModal(); UI.card(null); UI.cutin(null); UI.caption(null); UI.textHidden(false);
     stg('arrows', null);
   }
@@ -10586,7 +10667,7 @@ html.gj-big .gj-tool { font-size: 15px; }
   }
   function begin(state, resuming) {
     epoch++;
-    st = state; cur = null; hops = 0; lastScene = null; screenNow = null;
+    st = state; cur = null; lastScene = null; screenNow = null;
     meta.last = st.ch;
     UI.hideScreen(); UI.closeModal();
     UI.meters(meterList(), classroom());
@@ -10642,6 +10723,18 @@ html.gj-big .gj-tool { font-size: 15px; }
   }
   var ACT = {
     advance: advance, next: advance, card: advance,
+    review: function (b) { openReview(b.getAttribute('data-ch')); },
+    'review-pick': function (b) { if (UI.modalId() === 'review') reviewPick(+b.getAttribute('data-i')); },
+    'review-hint': function () {
+      if (UI.modalId() !== 'review' || review.choice !== null) return;
+      review.hinted = true;
+      drawReview(false);
+    },
+    'review-next': function () {
+      if (UI.modalId() !== 'review' || review.choice === null) return;
+      review.at++; review.choice = null; review.hinted = false;
+      drawReview(false);
+    },
     pick: function (b) { pick(+b.getAttribute('data-i')); },
     hint: hint,
     title: showTitle,

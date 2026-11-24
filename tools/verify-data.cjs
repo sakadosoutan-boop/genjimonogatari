@@ -81,7 +81,11 @@ function verify(G, only) {
     };
     let stage = null, cast = [];
     all.forEach(({ n, where }) => {
-      const t = n.t || 'say';
+      const t = n.t === undefined ? 'say' : n.t;
+      if (n.next !== undefined) {
+        if (typeof n.next !== 'string' || !n.next) E(`${where}: next は空でないノード id を指定する`);
+        else target(n.next, where);
+      }
       count[t] = (count[t] || 0) + 1;
       if (t === 'scene') {
         if (!S.stages[n.stage]) E(`${where}: 舞台 ${n.stage} がありません`);

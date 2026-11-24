@@ -184,3 +184,80 @@ test('結末：学習記録（コピー用の文）に読解率・読み・ふ�
   assert.match(t, /ふり返り/);
   assert.ok(w.document.querySelector('.gj-end [data-gj="copy"]') && w.document.querySelector('.gj-end [data-gj="print"]'));
 });
+
+test('復習：保存した誤答だけを出し、正解した問いを外して読解率としおりを維持する', () => {
+  const w = boot(null, ['tests/fixtures/chapter.js']), E = w.GENJI.Engine;
+  E.start('tameshi');
+  E._go('q-read');
+  E.pick(1);
+  E.pick(0);
+  E._go('q-subj');
+  E.pick(1);
+  E.pick(0);
+  const saved = JSON.parse(w.localStorage.getItem(KEY));
+  const w2 = boot(saved, ['tests/fixtures/chapter.js']), E2 = w2.GENJI.Engine, d = w2.document;
+  const click = (action, i) => d.querySelector('[data-gj="' + action + '"]' + (i == null ? '' : '[data-i="' + i + '"]')).click();
+  E2.chapter('tameshi');
+  click('review');
+  assert.match(d.querySelector('.gj-modal-body').textContent, /1／2問/);
+  click('review-hint');
+  assert.ok(d.querySelector('.gj-modal .gj-hint'));
+  click('review-pick', 0);
+  assert.ok(d.querySelector('.gj-modal .gj-fb.ok .gj-exp'));
+  click('review-next');
+  click('review-pick', 1);
+  assert.ok(d.querySelector('.gj-modal .gj-fb.ng .gj-fb-right'));
+  click('review-next');
+  assert.match(d.querySelector('.gj-modal-body').textContent, /2問中1問正解/);
+  d.querySelector('.gj-modal-body [data-gj="closemodal"]').click();
+  click('review');
+  assert.match(d.querySelector('.gj-modal-body').textContent, /1／1問.*主語は誰か/);
+  const record = JSON.parse(w2.localStorage.getItem(KEY)).ch.tameshi;
+  assert.deepEqual(record.missed, { 'q-subj': 1 });
+  const { missed, ...story } = record;
+  const { missed: oldMissed, ...oldStory } = saved.ch.tameshi;
+  assert.deepEqual(story, oldStory, '復習は物語の採点や進行に影響しない');
+  w.close();
+  w2.close();
+});
+
+test('壊れた遷移で読了・結末・読解率を更新せず、目次へ戻れる', () => {
+  const cases = [
+    { t: 'go', to: 'missing' },
+    { t: 'unknown' },
+    { t: 'end', e: 'missing' },
+    { id: 'bad', t: 'go', to: 'bad' },
+    { t: 'set', set: { x: true } }
+  ];
+  for (const broken of cases) {
+    const w = boot(null, ['tests/fixtures/chapter.js']), E = w.GENJI.Engine, d = w.document;
+    const ch = w.GENJI.chapters.tameshi;
+    w.GENJI.chapters.tameshi = { ...ch, acts: [
+      { id: 'good', title: '最初の段', nodes: [{ id: 'good', x: '最初の文', next: broken.id || 'bad#0' }] },
+      { id: 'bad', title: '壊れた段', nodes: [broken] }
+    ] };
+    const warnings = [];
+    w.console.warn = (...args) => warnings.push(args.join(' '));
+    E.start('tameshi');
+    E._state().q = E._state().ok = 2;
+    d.querySelector('.gj-panel .gj-next').click();
+    const record = E._meta().ch.tameshi;
+    assert.equal(d.querySelector('.gj-modal h3').textContent, '物語を進められません');
+    assert.ok(d.querySelector('.gj-chapter'));
+    assert.ok(!d.querySelector('.gj-end'));
+    assert.deepEqual(Object.keys(record.cleared), []);
+    assert.deepEqual(Object.keys(record.endings), []);
+    assert.equal(record.q, undefined);
+    assert.equal(record.ok, undefined);
+    assert.equal(record.save.node, 'good');
+    assert.match(warnings[0], /tameshi \/ good/);
+    w.close();
+  }
+});
+
+test('データ検証：next の参照切れを検出する', () => {
+  const { load, verify } = require('../tools/verify-data.cjs');
+  const G = load();
+  G.chapters.kiritsubo.acts[0].nodes[0].next = 'missing-target';
+  assert.ok(verify(G, ['kiritsubo']).errors.some((e) => e.includes('分岐先 missing-target がありません')));
+});
