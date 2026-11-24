@@ -221,7 +221,7 @@ def cute(P, T, E, cfg, U=None):
         ex1, ey1, ez1 = abs(eyes[0][0]), eyes[0][1], eyes[0][2]
         nb = noseY - 0.004   # 鼻の付け根（下）
         # 人中を短く：鼻の付け根より下を上へ（首の切り口へ向けて弱める）
-        wph = smooth(nb + 0.006, nb - 0.022, y) * smooth(bottom, bottom + 0.035, y) * gauss(x, 0.034) * smooth(0.0, 0.05, z)   # 顔の中央だけ・なだらかに
+        wph = smooth(nb + 0.006, nb - 0.022, y) * smooth(bottom + 0.02, bottom + 0.05, y) * gauss(x, 0.034) * smooth(0.0, 0.05, z)   # 顔の中央だけ・なだらかに
         P[:, 1] += c.get('philtrum', 0.0055) * st * wph
         # 口もとを奥へ（唇・人中・口のまわり）。鼻先は動かさない
         wm = gauss(x, 0.024) * smooth(nb + 0.004, nb - 0.004, y) * smooth(chinY - 0.002, chinY + 0.012, y) * smooth(0.05, 0.085, z)
@@ -242,7 +242,7 @@ def cute(P, T, E, cfg, U=None):
         # あごを小さく：口より下を口の方へ縮め、幅も細く（下顔面を短く）
         x, y, z = P[:, 0], P[:, 1], P[:, 2]
         mY = mouthY + c.get('philtrum', 0.0055) * st
-        wch = smooth(mY - 0.004, mY - 0.018, y) * smooth(bottom, bottom + 0.04, y) * gauss(x, 0.04) * smooth(-0.01, 0.05, z)
+        wch = smooth(mY - 0.004, mY - 0.018, y) * smooth(bottom + 0.02, bottom + 0.05, y) * gauss(x, 0.04) * smooth(-0.01, 0.05, z)
         P[:, 1] += (mY - 0.004 - y) * c.get('chin_small', 0.2) * st * wch
         P[:, 0] *= 1 - 0.09 * st * wch
         # 唇・あごの目印も様式化のあとの位置へ（塗りの紅がずれないように）
