@@ -737,8 +737,11 @@
     this.headScale = this.child ? Math.pow(kd.sc, -0.6) : 1;
     this.headO = new T.Vector3(0, 0.112, 0.014);
     this.headWrap = new T.Group(); this.headWrap.position.copy(this.headO).multiplyScalar(1); this.headWrap.scale.setScalar(this.headScale); this.headG.add(this.headWrap);
+    /* 腕：肩（armL/R）→ 肘で曲がる前腕（foreL/R。手首に置き、手と持ち物をつける）。上腕 a・前腕 b の長さ */
+    this.armLen = male ? { a: 0.245, b: 0.225 } : { a: 0.225, b: 0.205 };
     this.armL = new T.Group(); this.armL.position.set(this.dim.sx, this.dim.sy, -0.01); this.upper.add(this.armL);
     this.armR = new T.Group(); this.armR.position.set(-this.dim.sx, this.dim.sy, -0.01); this.upper.add(this.armR);
+    this.foreL = new T.Group(); this.armL.add(this.foreL); this.foreR = new T.Group(); this.armR.add(this.foreR);
     this.props = {}; this.lowers = {}; this.sleeveKey = ''; this.hairKey = '';
     this.ph = (this.seed * 2.3) % 6.28;
     this.cur = {}; this.tgt = {}; this.spk = 0; this.spkT = 0; this.blinkT = 2 + (this.seed % 3); this.blink = 0;
@@ -846,44 +849,183 @@
     }, function (u, v) { return (Math.round(u * 48) % 6 === 0 || v === 0 || v === 1) ? line : col; }, 6, 1, true);
   };
 
-  /* ---------- 袖（腕ごと動く）。袖口に襲の色目、袂は下へ垂れる ---------- */
-  HFig.prototype._sleeve = function (side, P) {
-    var M = new Mesher(), self = this, c = this.cols, fem = this.fem, kd = this.kd;
-    var n = fem ? this.nLay : 2, L = fem ? 0.36 : 0.39, i;
+  /* ---------- 腕の IK：肩から手首の行き先へ、上腕 a・前腕 b の二関節で届かせる ----------
+   * 肩（armL/R）の回転は Euler(-lf, 0, z)、前腕（foreL/R）は Euler(-fx, 0, fz)。どちらも「下（-Y）」を骨の向きへ回す。
+   * pole＝肘の向かう側（上体の座標）。結果 { lf, z, fx, fz } */
+  var _ik = { d: new T.Vector3(), p: new T.Vector3(), u: new T.Vector3(), e: new T.Vector3(), f: new T.Vector3(), q: new T.Quaternion(), eu: new T.Euler() };
+  function solveArm(S, Tg, a, b, pole) {
+    var d = _ik.d.copy(Tg).sub(S), D = d.length(), mx = (a + b) * 0.995, mn = Math.abs(a - b) + 0.03;
+    if (D > mx) { d.multiplyScalar(mx / D); D = mx; } else if (D < mn) { d.multiplyScalar(mn / Math.max(D, 1e-4)); D = mn; }
+    var dn = d.clone().normalize(), A = Math.acos(K.clamp((a * a + D * D - b * b) / (2 * a * D), -1, 1));
+    var p = _ik.p.copy(pole).addScaledVector(dn, -pole.dot(dn)); if (p.lengthSq() < 1e-6) p.set(0, -1, 0); p.normalize();
+    var u = _ik.u.copy(dn).multiplyScalar(Math.cos(A)).addScaledVector(p, Math.sin(A)).normalize();
+    var E = _ik.e.copy(S).addScaledVector(u, a), f = _ik.f.copy(S).add(d).sub(E).normalize();
+    var z = Math.asin(K.clamp(u.x, -1, 1)), lf = Math.atan2(u.z, -u.y);
+    _ik.q.setFromEuler(_ik.eu.set(-lf, 0, z)).invert(); f.applyQuaternion(_ik.q);
+    return { lf: lf, z: z, fx: Math.atan2(f.z, -f.y), fz: Math.asin(K.clamp(f.x, -1, 1)) };
+  }
+  /* 袖の芯（肩 0 → 袖口）の点と向き：肘のまわり（a±r）で前腕の向きへなめらかに曲がる弧。表を作って引く */
+  function bendTable(a, r, Ls, fx, fz) {
+    var N = 40, C = new Float32Array((N + 1) * 3), Q = [], q = new T.Quaternion(), e = new T.Euler(), v = new T.Vector3(), i, ds = Ls / N, x = 0, y = 0, z = 0;
+    for (i = 0; i <= N; i++) {
+      var s = i * ds, w = smooth(a - r, a + r, s); q.setFromEuler(e.set(-fx * w, 0, fz * w)); Q.push(q.clone());
+      C[i * 3] = x; C[i * 3 + 1] = y; C[i * 3 + 2] = z;
+      var wm = smooth(a - r, a + r, s + ds / 2); q.setFromEuler(e.set(-fx * wm, 0, fz * wm)); v.set(0, -ds, 0).applyQuaternion(q); x += v.x; y += v.y; z += v.z;
+    }
+    return { N: N, ds: ds, C: C, Q: Q, a: a, r: r };
+  }
+  function bendAt(B, s, outP, outQ) {
+    if (s <= 0) { outP.set(0, -s, 0); outQ.set(0, 0, 0, 1); return; }
+    var f = Math.min(B.N - 1e-6, s / B.ds), i = Math.floor(f), t = f - i, C = B.C;
+    outP.set(K.lerp(C[i * 3], C[i * 3 + 3], t), K.lerp(C[i * 3 + 1], C[i * 3 + 4], t), K.lerp(C[i * 3 + 2], C[i * 3 + 5], t));
+    if (s > B.N * B.ds) outP.add(_bv.set(0, -(s - B.N * B.ds), 0).applyQuaternion(B.Q[B.N]));
+    outQ.copy(B.Q[i]).slerp(B.Q[Math.min(B.N, i + 1)], t);
+  }
+  var _bv = new T.Vector3(), _bp = new T.Vector3(), _bq = new T.Quaternion(), _bm = new T.Matrix4(), _bm2 = new T.Matrix4();
+
+  /* ---------- 袖（上腕から前腕へ、肘で曲がる）。袖口に襲の色目、袂は重力の側へ平たく垂れる ----------
+   * 網目は「芯の長さ s」と「その点の断面での位置 q」で持ち、肘の角度が変わるたびに芯の弧へ巻き直す（bendSleeve）。
+   * 目標の姿勢での形を作るときに、胴・頭・裾（膝）・床へめり込む点を外へ押し出す。 */
+  HFig.prototype._sleeve = function (side, P, A) {
+    var M = new Mesher(), self = this, c = this.cols, fem = this.fem, al = this.armLen;
+    var n = fem ? this.nLay : 2, i, reach = A.reach || 0, Lw = al.a + al.b, L;
     var layers = []; for (i = 0; i < n; i++) layers.push(fem ? c[i] : (i ? (this.kind === 'kariginu' ? c[1] : '#f4efe2') : c[0]));
     if (this.kind === 'sou' || this.kind === 'ama') layers = [c[0], '#f2eee6'];
-    /* 重力の向きを腕の座標へ（姿勢の目標値で） */
-    var lf = side > 0 ? P.lf || 0 : P.rf || 0, a = (P.lean || 0) + lf, gy = -Math.cos(a), gz = -Math.sin(a);   /* 腕の座標での「下」 */
     var bag = (fem ? 0.2 : 0.15) * (this.child ? 0.8 : 1);
-    var hi = this.tier !== 'low' && !this.far, seed = this.seed;
-    /* 袖の面の 1 点：th＝腕のまわりの角度、vv＝肩 0 → 袖口 1。ひだ（縦のたるみ）・袖口への広がり・波打つ袖口の縁・袂の垂れ */
+    var hi = this.tier !== 'low' && !this.far, seed = this.seed, R0 = 0.07;
+    /* 目標の姿勢での、肩の座標 → 上体 → pivot の行列と、肩の座標での重力の向き */
+    var B = bendTable(al.a, R0, Lw + 0.12, A.fx, A.fz);
+    var Mua = new T.Matrix4().compose(this[side > 0 ? 'armL' : 'armR'].position, new T.Quaternion().setFromEuler(new T.Euler(-A.lf, 0, A.z)), new T.Vector3(1, 1, 1));
+    var Mpu = new T.Matrix4().compose(new T.Vector3(0, P.lie ? 0.15 : P.st ? this.wStand : this.wSit, 0), new T.Quaternion().setFromEuler(new T.Euler(P.lean || 0, P.yaw || 0, 0)), new T.Vector3(1, 1, 1));
+    var Mpa = new T.Matrix4().multiplyMatrices(Mpu, Mua), Mpai = new T.Matrix4().copy(Mpa).invert(), Muai = new T.Matrix4().copy(Mua).invert();
+    var gArm = new T.Vector3(0, -1, 0).transformDirection(Mpai), gl = new T.Vector3(), qq = new T.Quaternion();
+    /* 前腕を上げると（袖口が肘より高い）、袖は肘の方へずり落ちて手首が出る */
+    bendAt(B, Lw, _bp, qq); gl.copy(gArm).applyQuaternion(qq.invert());
+    reach += 0.075 * smooth(0.05, 0.7, gl.y); L = Lw + 0.035 - reach;
+    var Sarr = [], THa = [], VVa = [];
+    /* 袖の面の 1 点：th＝腕のまわりの角度、vv＝肩 0 → 袖口 1。ひだ・袖口への広がり・波打つ袖口・袂の垂れ。まっすぐな腕の座標で返す */
     function pt(th, vv, shrink, len, off, o) {
-      /* 肩口（vv<0）：表の衣を首の方へ少し延ばし、胴の肩の線となだらかにつなぐ（袖の付け根の段差を消す） */
+      /* 肩口（vv<0）：表の衣を首の方へ少し延ばし、胴の肩の線となだらかにつなぐ */
       var cap = vv < 0 ? -vv / 0.12 : 0; vv = Math.max(0, vv);
+      THa.push(th); VVa.push(vv); var s = len * vv; Sarr.push(s);
       var rx = K.lerp(0.055, fem ? 0.094 : 0.082, smooth(0, 0.55, vv)) - shrink - 0.01 * cap, rz = K.lerp(0.068, fem ? 0.14 : 0.127, smooth(0, 0.65, vv)) - shrink - 0.004 * cap;
       var fl = 1 + 0.07 * smooth(0.8, 1, vv);
       var fold = (0.011 * Math.sin(th * 4 + seed + side + vv * 1.6) + 0.006 * Math.sin(th * 7 + seed * 2 - vv * 2.2) + 0.0028 * Math.sin(th * 13 + side * 3 + seed)) * smooth(0.12, 0.9, vv);
-      var x = (rx * fl + fold + off) * Math.sin(th) - 0.04 * cap * cap, z = (rz * fl + fold + off) * Math.cos(th), y = -len * vv + 0.043 * cap;
-      /* 袂：腕の下側（重力の側）に平たい袋になって垂れる。腕を下ろすと袖口の先へ伸びる */
-      var dn = Math.max(0, -Math.cos(th)), sgz = Math.abs(gz), drop = bag * smooth(0.15, 1, vv) * Math.pow(dn, 0.6);
+      var x = ((rx * fl + fold + off) * Math.sin(th) - 0.04 * cap * cap) * side, z = (rz * fl + fold + off) * Math.cos(th), y = -s + 0.043 * cap;
+      /* その点での重力（断面の座標）。袂は重力の側に平たい袋になって垂れる */
+      bendAt(B, s, _bp, qq); gl.copy(gArm).applyQuaternion(qq.invert());
+      var sg = Math.sqrt(gl.x * gl.x + gl.z * gl.z), thG = Math.atan2(gl.x, gl.z - 0.15), tha = Math.atan2(x, z);
+      /* 腕の上側（重力と反対の側）は布が腕に沿って落ちる：筒にならないよう、上の面を腕へ寄せる */
+      var up = Math.max(0, -Math.cos(tha - thG)), kc = (1 - 0.42 * up * sg * smooth(0.08, 0.45, vv)) * (1 - 0.32 * smooth(0, 0.8, gl.y) * smooth(0.5, 1, vv));
+      x *= kc; z *= kc;
+      var dn = Math.max(0, Math.cos(tha - thG)), drop = bag * smooth(0.15, 1, vv) * Math.pow(dn, 0.6);
       var hem = (0.012 * Math.sin(th * 3 + seed) + 0.006 * Math.sin(th * 5 + side * 2)) * smooth(0.82, 1, vv);
-      o[0] = x * (1 - 0.35 * drop / (bag + 1e-6) * sgz) * side; o[1] = y - drop * (1 - sgz) * 0.6 + hem; o[2] = z - drop * sgz * 1.1;
+      var ex = Math.cos(thG), ez = -Math.sin(thG), cr = (x * ex + z * ez) * 0.35 * drop / (bag + 1e-6) * sg;
+      o[0] = x - cr * ex + drop * gl.x * 1.1; o[1] = y + hem + drop * (gl.y < 0 ? -1 : 1) * (1 - sg) * 0.6; o[2] = z - cr * ez + drop * gl.z * 1.1;
       return o;
     }
+    var LAY = [];
     layers.forEach(function (hex, li) {
       /* 重ねが多いとき（6 枚）は段を細く。内の衣は袖口の近くだけなので粗く */
-      var many = n > 4, col = lin(hex), len = L + li * (many ? 0.0085 : 0.014), shrink = li * (many ? 0.0031 : 0.005), v0 = li ? (many ? 0.8 : 0.55) : (fem ? -0.12 : 0);
-      M.surf(li ? (many ? 20 : 24) : (hi ? 30 : 28), li ? (many ? 2 : 6) : (hi ? 14 : 13), function (u, v, o) { pt(u * PI * 2, K.lerp(v0, 1, v), shrink, len, 0, o); }, col, 3, 2, true);
+      /* 内の衣は表と同じ周の分け方にし、少しあいだを空ける（粗い面が表の曲面を突き抜けないように） */
+      var many = n > 4, col = lin(hex), len = L + li * (many ? 0.0085 : 0.014), shrink = li * (many ? 0.0034 : 0.008), v0 = li ? (many ? 0.8 : 0.72) : (fem ? -0.12 : 0);
+      var k0 = Sarr.length, nu0 = hi ? 30 : 28, nv0 = li ? (many ? 2 : 4) : (hi ? 14 : 13);
+      M.surf(nu0, nv0, function (u, v, o) { pt(u * PI * 2, K.lerp(v0, 1, v), shrink, len, 0, o); }, col, 3, 2, true);
+      LAY.push([k0, Sarr.length, li, nu0, nv0, v0]);
     });
     /* 狩衣：袖口の袖括（そでぐくり）の紐を縁に通す */
     if (this.kind === 'kariginu') {
-      var cord = lin(c[1] || '#d8cfb0');
+      var cord = lin(c[1] || '#d8cfb0'), k1 = Sarr.length;
       M.surf(28, 3, function (u, v, o) {
         var th = u * PI * 2, a2 = v * PI * 2, r0 = 0.005;
         pt(th, 1, 0, L, r0 * Math.cos(a2), o); o[1] += 0.006 + r0 * Math.sin(a2);
       }, cord, 3, 1, true);
+      LAY.push([k1, Sarr.length, 0]);
     }
-    return M.build();
+    var g = M.build(), pos = g.attributes.position.array, nv = pos.length / 3, S = new Float32Array(Sarr), Qd = new Float32Array(nv * 3);
+    /* 断面の位置 q（まっすぐな腕では芯が (0,-s,0)） */
+    for (i = 0; i < nv; i++) { Qd[i * 3] = pos[i * 3]; Qd[i * 3 + 1] = pos[i * 3 + 1] + Math.max(0, S[i]); Qd[i * 3 + 2] = pos[i * 3 + 2]; }
+    /* 目標の姿勢で、胴・頭・膝（裾の山）・床へのめり込みを外へ押し出す */
+    var sk = P.lie ? null : this._lower(!!P.st).userData.info, H = this.dim.H, hc = this._headCenterU(P), hr = 0.1 * this.headScale;
+    var pA = new T.Vector3(), pU = new T.Vector3(), pP = new T.Vector3(), o3 = [0, 0, 0];
+    /* 内の衣（袖口の重ね・紐）は、表の衣と同じだけ動かす（別々に押し出すと、内の衣が表を突き抜けて斑に見える） */
+    var L0 = LAY[0], dQ = new Float32Array((L0[1] - L0[0]) * 3);
+    function outerD(th, vv, out) {
+      var nu0 = L0[3], nv0 = L0[4], fu = ((th / (PI * 2)) % 1 + 1) % 1 * nu0, fv = K.clamp((vv - L0[5]) / (1 - L0[5]), 0, 1) * nv0;
+      var i0 = Math.floor(fu) % nu0, i1 = (i0 + 1) % nu0, tu = fu - Math.floor(fu), j0 = Math.min(nv0 - 1, Math.floor(fv)), tv = fv - j0, k;
+      for (k = 0; k < 3; k++) {
+        var a = dQ[(j0 * nu0 + i0) * 3 + k], b = dQ[(j0 * nu0 + i1) * 3 + k], c2 = dQ[((j0 + 1) * nu0 + i0) * 3 + k], d2 = dQ[((j0 + 1) * nu0 + i1) * 3 + k];
+        out[k] = K.lerp(K.lerp(a, b, tu), K.lerp(c2, d2, tu), tv);
+      }
+      return out;
+    }
+    LAY.forEach(function (Ly, ly) {
+      var m = 0.016 - Ly[2] * 0.0016;
+      for (i = Ly[0]; i < Ly[1]; i++) {
+        var s = S[i]; if (s < 0.05) continue;
+        if (ly) {
+          outerD(THa[i], VVa[i], o3); Qd[i * 3] += o3[0]; Qd[i * 3 + 1] += o3[1]; Qd[i * 3 + 2] += o3[2];
+          continue;
+        }
+        var q0x = Qd[i * 3], q0y = Qd[i * 3 + 1], q0z = Qd[i * 3 + 2];
+        var wgt = smooth(0.05, 0.16, s);
+        bendAt(B, s, _bp, qq); pA.set(Qd[i * 3], Qd[i * 3 + 1], Qd[i * 3 + 2]).applyQuaternion(qq).add(_bp);
+        pU.copy(pA).applyMatrix4(Mua);
+        var x0 = pU.x, y0 = pU.y, z0 = pU.z;
+        /* 胴（上体の座標の楕円柱） */
+        var vT = y0 / H;
+        if (vT < 1.02 && vT > -0.15) {
+          var tr = self._torsoR(Math.max(0, vT)), ex2 = pU.x / (tr[0] + m), ez2 = (pU.z - tr[2]) / (tr[1] + m), e2 = ex2 * ex2 + ez2 * ez2;
+          if (e2 < 1 && e2 > 1e-6) { var kk = 1 / Math.sqrt(e2); pU.x *= kk; pU.z = tr[2] + (pU.z - tr[2]) * kk; }
+        }
+        /* 頭（球） */
+        _bv.copy(pU).sub(hc); var hl = _bv.length();
+        if (hl < hr + m && s > 0.15) pU.copy(hc).addScaledVector(_bv.normalize(), hr + m);
+        pU.set(x0 + (pU.x - x0) * wgt, y0 + (pU.y - y0) * wgt, z0 + (pU.z - z0) * wgt);
+        pP.copy(pU).applyMatrix4(Mpu);
+        /* 裾の山（膝・裾の上に袖が載る）と床 */
+        if (sk) { var ys = moundY(sk, pP.x, pP.z, o3); if (ys > -1 && pP.y < ys + m) pP.y = K.lerp(pP.y, ys + m, wgt); }
+        var fy = 0.008 + (2 - Ly[2]) * 0.0012; if (pP.y < fy) pP.y = fy;
+        pA.copy(pP).applyMatrix4(Mpai).sub(_bp).applyQuaternion(qq.invert());
+        Qd[i * 3] = pA.x; Qd[i * 3 + 1] = pA.y; Qd[i * 3 + 2] = pA.z;
+        var di = (i - L0[0]) * 3; dQ[di] = pA.x - q0x; dQ[di + 1] = pA.y - q0y; dQ[di + 2] = pA.z - q0z;
+      }
+    });
+    g.userData.bend = { S: S, Q: Qd, a: al.a, r: R0, L: Lw + 0.12, fx: null, fz: null };
+    bendSleeve(g, A.fx, A.fz);
+    return g;
+  };
+  /* 裾の山の高さ（pivot の座標 x,z の上）。山の外なら -9 */
+  function moundY(sk, x, z, o) {
+    var th = Math.atan2(x, z), r = Math.sqrt(x * x + z * z), lo = 0, hi = 1, k;
+    sk.S(th, 0, 0, o); var r0 = Math.sqrt(o[0] * o[0] + o[2] * o[2]); if (r <= r0) return sk.H + 0.012;
+    sk.S(th, 1, 0, o); if (r >= Math.sqrt(o[0] * o[0] + o[2] * o[2])) return -9;
+    for (k = 0; k < 14; k++) { var mid = (lo + hi) / 2; sk.S(th, mid, 0, o); if (Math.sqrt(o[0] * o[0] + o[2] * o[2]) < r) lo = mid; else hi = mid; }
+    sk.S(th, (lo + hi) / 2, 0, o); return o[1];
+  }
+  /* 肘の角度（fx, fz）で、袖の網目を芯の弧へ巻き直す */
+  function bendSleeve(g, fx, fz) {
+    var D = g.userData.bend; if (!D || (D.fx === fx && D.fz === fz)) return;
+    D.fx = fx; D.fz = fz;
+    var B = bendTable(D.a, D.r, D.L, fx, fz), pos = g.attributes.position, p = pos.array, n = pos.count, i;
+    for (i = 0; i < n; i++) {
+      bendAt(B, D.S[i], _bp, _bq); _bv.set(D.Q[i * 3], D.Q[i * 3 + 1], D.Q[i * 3 + 2]).applyQuaternion(_bq).add(_bp);
+      p[i * 3] = _bv.x; p[i * 3 + 1] = _bv.y; p[i * 3 + 2] = _bv.z;
+    }
+    pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingSphere();
+    D.B = B;
+  }
+  /* 手首（前腕の群れ）を、袖の芯の弧に合わせて置く */
+  HFig.prototype._placeFore = function (side, fx, fz) {
+    var fg = side > 0 ? this.foreL : this.foreR, al = this.armLen, sl = side > 0 ? this.sleeveL : this.sleeveR;
+    var D = sl && sl.geometry.userData.bend, B = D && D.B && D.fx === fx && D.fz === fz ? D.B : bendTable(al.a, 0.07, al.a + al.b + 0.1, fx, fz);
+    bendAt(B, al.a + al.b, fg.position, fg.quaternion);
+  };
+  /* 上体の座標での頭の中心（姿勢の目標の うつむき・振り で） */
+  HFig.prototype._headCenterU = function (P, off) {
+    var hs = this.headScale, v = new T.Vector3(off ? off[0] * hs : 0, this.headO.y + (off ? off[1] * hs : 0), this.headO.z + (off ? off[2] * hs : 0));
+    v.applyEuler(new T.Euler(P.hp || 0, P.hy || 0, 0)); v.y += this.headG.position.y;
+    return v;
   };
   HFig.prototype._hands = function () {
     if (this.handsMade || !root.GJ3_HD_ASSETS.hands) return;
@@ -896,9 +1038,9 @@
     var key = side + pose; if (this.hand[key]) return this.hand[key];
     var m = buildHand(pose, side > 0 ? 'L' : 'R', this.handP, this.tier === 'low' || this.far ? 'low' : 'high');
     if (!m) return null;
-    var g = new T.Group(); g.add(m); (side > 0 ? this.armL : this.armR).add(g);
+    var g = new T.Group(); g.add(m); (side > 0 ? this.foreL : this.foreR).add(g);
     m.rotation.set(PI, side > 0 ? -PI / 2 : PI / 2, 0, 'YXZ');
-    g.position.set(0, -(this.fem ? 0.36 : 0.39) + 0.035, 0.01);
+    g.position.set(0, 0, 0.005);
     g.scale.setScalar(this.child ? 0.75 : this.fem ? 0.88 : 0.95);
     return (this.hand[key] = g);
   };
@@ -1001,6 +1143,7 @@
     }
     var hairM = M.p.length ? this._mesh(this.headWrap, M.build(), this.hmat) : null;
     if (hairM) hairM.renderOrder = 2;
+    this.hairDeco = hairM;
     var kind = this.kind;
     if (kind === 'noshi' || kind === 'sokutai') this._mesh(this.headWrap, this._kanmuri(this.id === 'mikado'), lacquer());
     else if (kind === 'kariginu') this._mesh(this.headWrap, this._eboshi(), lacquer(true));
@@ -1175,35 +1318,74 @@
     }, lin('#ffffff'), 1, 1);
     return M.build();
   }
+  /* 抱かれた幼子（産着にくるんだ嬰児）。頭は +X の端、顔は上（抱く人の顔の方）へ。体の軸は X。眠って目を閉じている */
+  function infantGroup(mat) {
+    var grp = new T.Group(), M = new Mesher(), white = lin('#f7f4ee'), wrap = lin('#efe8da'), edge = lin('#e2d6be'), x0 = -0.2, x1 = 0.075;
+    /* 産着：足の側は丸く閉じ、頭の側は襟のように開いて顔をのぞかせる */
+    M.surf(24, 14, function (u, v, o) {
+      var th = u * PI * 2, x = K.lerp(x0, x1, v), t = (x - x0) / (0.1 - x0), prof = Math.sqrt(Math.max(0, Math.sin(Math.min(1, t) * PI * 0.62 + 0.02)));
+      var fold = 0.004 * Math.sin(th * 5 + v * 7);
+      o[0] = x; o[1] = (0.066 * prof + fold) * Math.cos(th); o[2] = (0.06 * prof + fold) * Math.sin(th) - 0.004;
+    }, white, 3, 2, true);
+    /* おくるみ（外の布）：胸から足をくるみ、斜めの合わせ目 */
+    M.surf(24, 10, function (u, v, o) {
+      var th = u * PI * 2, x = K.lerp(x0 + 0.01, 0.02 - 0.03 * Math.sin(th), v), t = (x - x0) / (0.1 - x0), prof = Math.sqrt(Math.max(0, Math.sin(Math.min(1, t) * PI * 0.62 + 0.02)));
+      o[0] = x; o[1] = (0.072 * prof + 0.003) * Math.cos(th); o[2] = (0.066 * prof + 0.003) * Math.sin(th) - 0.004;
+    }, function (u, v) { return v > 0.88 ? edge : wrap; }, 3, 2, true);
+    /* 頭を受ける襟（後ろ頭の下へまわる布） */
+    M.surf(18, 4, function (u, v, o) {
+      var a = -PI * 0.15 + u * PI * 1.3, r = 0.058 + 0.012 * v;
+      o[0] = 0.07 + 0.03 * v + 0.015 * Math.cos(a); o[1] = Math.cos(a) * r; o[2] = -Math.sin(a) * r * 0.9 - 0.004 - 0.01 * v;
+    }, white, 2, 1, false);
+    var bundle = new T.Mesh(M.build(), mat); grp.add(bundle);
+    var look = isHeian('girl') ? { role: 'girl', tone: '#' + root.GJ3_HD_ASSETS.heads.girl.skin, extra: 1.15, hair: 'bob', hairCol: '#3a2c26' } : { role: 'female', tone: SKIN.child, child: 1.4, cheek: 0.3, lip: '#c05a5a', hair: 'bob' };
+    var bh = buildHead(look, 'low');
+    /* 頭の +Y（頭頂）→ 体の +X、顔（+Z）→ 上（+Y）。少しだけ抱く人の方（-Z）へ傾ける */
+    var mb = new T.Matrix4().makeBasis(new T.Vector3(0, 0, 1), new T.Vector3(1, 0, 0), new T.Vector3(0, 1, 0));
+    bh.g.quaternion.setFromRotationMatrix(mb).premultiply(new T.Quaternion().setFromEuler(new T.Euler(0.85, 0, 0.1)));
+    bh.g.scale.setScalar(0.5); bh.g.position.set(0.135, 0.012, 0.0); grp.add(bh.g);
+    /* 眠っている：まぶたを閉じる */
+    bh.lids.forEach(function (l) { l.rotation.x = 0.62; });
+    grp.userData.head = bh.g;
+    return grp;
+  }
   HFig.prototype._prop = function (name) {
     if (this.props[name]) return this.props[name];
-    var self = this, grp = new T.Group(), parent = this.pivot, c = this.cols, L = this.fem ? 0.36 : 0.39, M, m;
+    var self = this, grp = new T.Group(), parent = this.pivot, c = this.cols, M, m;
     if (name === 'fan') {
-      parent = this.armR;
+      /* 檜扇・蝙蝠扇：要（かなめ）を右手に。扇の面は上体の座標で立てる（setPose が向きを合わせる） */
+      parent = this.foreR;
       m = new T.Mesh(fanGeo(this.fem), new T.MeshStandardMaterial({ map: fanTex(this.fem), roughness: 0.5, metalness: this.fem ? 0.15 : 0, side: T.DoubleSide }));
-      m.material.map.encoding = T.sRGBEncoding;
-      m.position.set(0.0, -L - 0.02, 0.06); m.rotation.set(-PI / 2 + 0.25, 0, 0); grp.add(m);
+      m.material.map.encoding = T.sRGBEncoding; grp.add(m);
       if (this.fem) {   /* 飾り糸（色糸を長く垂らす） */
         var cm = new Mesher();
         ['#b5432e', '#e9c46a', '#7f9bd0', '#5f8f78', '#f3eadb', '#9a7fc0'].forEach(function (hx, i) {
-          strip(cm, [[-0.15 + i * 0.004, -L + 0.02, 0.1], [-0.17 + i * 0.006, -L - 0.08, 0.12], [-0.18 + i * 0.008, -L - 0.26, 0.1]], [0.006, 0.006, 0.006], 0.001, [0, 0, 1], 8, lin(hx));
+          strip(cm, [[-0.004 + i * 0.002, 0.03, 0.006], [-0.03 + i * 0.004, -0.06, 0.02], [-0.04 + i * 0.006, -0.2, 0.02]], [0.006, 0.006, 0.006], 0.001, [0, 0, 1], 8, lin(hx));
         });
         grp.add(new T.Mesh(cm.build(), new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: T.DoubleSide })));
       }
+      grp.userData.hold = { side: -1, at: [0, 0.03, 0.02], rot: [-0.12, 0, 0], yawHead: 0.8 };
     } else if (name === 'shaku') {
-      parent = this.upper;   /* 笏：胸の前に立てて持つ */
-      m = new T.Mesh(new T.BoxGeometry(0.05, 0.3, 0.008), new T.MeshStandardMaterial({ color: lin('#e3d3ad'), roughness: 0.6 })); m.position.set(0, 0.2, 0.2); m.rotation.x = -0.18; grp.add(m);
+      /* 笏：右手で胸の前に立てて持つ */
+      parent = this.foreR;
+      m = new T.Mesh(new T.BoxGeometry(0.05, 0.3, 0.008), new T.MeshStandardMaterial({ color: lin('#e3d3ad'), roughness: 0.6 })); m.position.set(0, 0.09, 0); grp.add(m);
+      grp.userData.hold = { side: -1, at: [0, 0.02, 0.025], rot: [-0.18, 0, 0] };
     } else if (name === 'juzu') {
-      parent = this.armR; M = new Mesher();
-      for (var i = 0; i < 36; i++) { var a = i / 36 * PI * 2, sg = new T.SphereGeometry(0.008, 6, 4); sg.translate(Math.cos(a) * 0.06, -L - 0.06 + Math.sin(a) * 0.09, 0.05); addGeo(M, sg, lin(i % 9 ? '#4a2f22' : '#c9a44a')); sg.dispose(); }
+      /* 数珠：合わせた手から下へ垂らす */
+      parent = this.foreR; M = new Mesher();
+      for (var i = 0; i < 36; i++) { var a = i / 36 * PI * 2, sg = new T.SphereGeometry(0.008, 6, 4); sg.translate(Math.sin(a) * 0.05, -0.085 + Math.cos(a) * 0.085, 0); addGeo(M, sg, lin(i % 9 ? '#4a2f22' : '#c9a44a')); sg.dispose(); }
       grp.add(new T.Mesh(M.build(), new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.35 })));
+      grp.userData.hold = { side: -1, at: [0.016, 0.04, 0.05], rot: [0.15, 0, 0] };
     } else if (name === 'desk') {
       var lq = new T.MeshStandardMaterial({ color: lin('#1d1512'), roughness: 0.32 });
       var top = new T.Mesh(new T.BoxGeometry(0.62, 0.025, 0.3), lq); top.position.set(0, 0.24, 0.55); grp.add(top);
       [-1, 1].forEach(function (s) { var lg = new T.Mesh(new T.BoxGeometry(0.03, 0.23, 0.24), lq); lg.position.set(s * 0.27, 0.115, 0.55); grp.add(lg); });
       var pap = new T.Mesh(new T.BoxGeometry(0.34, 0.004, 0.22), new T.MeshStandardMaterial({ color: lin('#f4eede'), roughness: 0.9 })); pap.position.set(0.04, 0.255, 0.56); pap.rotation.y = 0.1; grp.add(pap);
       var ink = new T.Mesh(new T.BoxGeometry(0.07, 0.02, 0.1), new T.MeshStandardMaterial({ color: lin('#26201c'), roughness: 0.4 })); ink.position.set(-0.23, 0.26, 0.52); grp.add(ink);
-      var br = new T.Mesh(new T.CylinderGeometry(0.004, 0.003, 0.18, 6), new T.MeshStandardMaterial({ color: lin('#3b2a1c') })); br.position.set(0, -L - 0.03, 0.06); br.rotation.x = 1.0; this.armR.add(br); grp.userData.extra = br;
+      /* 筆：右手に（穂先を紙へ） */
+      var br = new T.Group(), bm = new T.Mesh(new T.CylinderGeometry(0.004, 0.003, 0.18, 6), new T.MeshStandardMaterial({ color: lin('#3b2a1c') })); bm.position.y = 0.02; br.add(bm);
+      var tip = new T.Mesh(new T.ConeGeometry(0.0045, 0.025, 6), new T.MeshStandardMaterial({ color: lin('#15110f') })); tip.rotation.x = PI; tip.position.y = -0.082; br.add(tip);
+      this.foreR.add(br); br.userData.hold = { side: -1, at: [-0.02, 0.0, 0.07], rot: [0.35, 0, 0.15] }; grp.userData.extra = br;
     } else if (name === 'fusuma') {
       M = new Mesher();
       c.slice(0, 3).forEach(function (hx, i) {
@@ -1217,61 +1399,158 @@
       grp.add(new T.Mesh(M.build(), this.mat));
       var pil = new T.Mesh(new T.BoxGeometry(0.3, 0.1, 0.14), new T.MeshStandardMaterial({ color: lin('#3a2a44'), roughness: 0.5 })); pil.position.set(0, 0.05, -0.62); grp.add(pil);
     } else if (name === 'chigo') {
+      /* 抱いた幼子：胸の高さで、左の肘の内に頭、右手で下から支える */
       parent = this.upper;
-      var cc = (G.chars.wakamiya && G.chars.wakamiya.look.colors) || ['#f6f0f8', '#e9c46a'];
-      M = new Mesher();
-      [cc[0], cc[1]].forEach(function (hx, i) {
-        M.surf(20, 8, function (u, v, o) { var th = u * PI * 2, ph = (v - 0.5) * PI, rx = 0.2 - i * 0.01, ry = 0.09 - i * 0.012, rz = 0.1; o[0] = Math.sin(ph) * rx; o[1] = Math.cos(th) * Math.cos(ph) * ry; o[2] = Math.sin(th) * Math.cos(ph) * rz; }, lin(hx), 4, 2, true);
-      });
-      var bundle = new T.Mesh(M.build(), this.mat); bundle.position.set(0.02, 0.1, 0.22); bundle.rotation.z = 0.5; grp.add(bundle);
-      var bh = buildHead(isHeian('girl') ? { role: 'girl', tone: '#' + root.GJ3_HD_ASSETS.heads.girl.skin, extra: 1.1, hair: 'bob' } : { role: 'female', tone: SKIN.child, child: 1.4, cheek: 0.3, lip: '#c05a5a', hair: 'bob' }, 'low');
-      bh.g.scale.setScalar(0.58); bh.g.position.set(0.17, 0.2, 0.22); bh.g.rotation.set(-0.2, 0.9, 0.5); grp.add(bh.g);
+      var inf = infantGroup(this.mat); grp.add(inf);
+      var s0 = 1 / (this.kd.sc || 1);   /* 抱く人の背丈によらず、嬰児の大きさはそろえる */
+      inf.scale.setScalar(s0 * (this.fem ? 1 : 1.02));
+      grp.position.set(0.0, 0.27, 0.225); grp.rotation.set(0.0, 0.22, 0.3);
+      grp.userData.infant = inf;
     }
     parent.add(grp);
     grp.traverse(function (o) { if (o.isMesh) o.castShadow = true; });
     return (this.props[name] = grp);
   };
+  /* 抱いた幼子の頭の中心（ワールド）。抱いていなければ null */
+  HFig.prototype.heldHead = function (v) {
+    var p = this.props.chigo; if (!p || !p.visible) return null;
+    var h = p.userData.infant.userData.head; h.updateMatrixWorld(true);
+    return v.set(0, 0, 0).applyMatrix4(h.matrixWorld);
+  };
 
-  /* ---------- 姿勢・毎フレーム ---------- */
+  /* ---------- 姿勢（高精細版）：体の構えは S3F.POSE_TABLE。腕は手首の行き先から IK で ----------
+   * 行き先 [x, y, z, 座標]：'w'＝pivot（y は腰の高さから）/ 'f'＝pivot（床から）/ 'u'＝上体 / 'h'＝頭の中心から（うつむき・振りこみ）。
+   *   'sit' と書けば座った時の手（膝の上）。pole＝肘の向かう側（上体の座標。x は外向きを正）。reach＝袖口から手首を出す長さ。
+   *   hand＝見せる手の形 [左, 右]（女・子は持ち物のない手を袖の内に隠す）。tw＝手首のひねり [左, 右] */
+  var HP = {
+    sit:    { L: [0.075, 0.035, 0.27, 'w'], R: [-0.07, 0.02, 0.245, 'w'], man: { L: [0.14, -0.005, 0.27, 'w'], R: [-0.14, -0.005, 0.27, 'w'], hand: ['lap', 'lap'] } },
+    stand:  { L: [0.075, -0.03, 0.2, 'w'], R: [-0.07, -0.045, 0.185, 'w'], man: { L: [0.17, -0.05, 0.09, 'w'], R: [-0.17, -0.05, 0.09, 'w'], hand: ['relax', 'relax'] } },
+    bow:    { L: [0.13, 0.05, 0.52, 'f'], R: [-0.13, 0.05, 0.5, 'f'], pole: [0.9, 0.1, -0.2], man: { hand: ['rest', 'rest'] } },
+    fan:    { L: 'sit', R: [-0.03, 0.27, 0.2, 'u'], poleR: [0.8, -0.6, 0.1], hand: [null, 'fan'], man: { hand: ['lap', 'fan'] } },
+    weep:   { L: 'sit', R: [0.035, -0.022, 0.125, 'h'], poleR: [0.9, -0.5, 0.1] },
+    lie:    { L: [0.2, 0.03, 0.03, 'u'], R: [-0.2, 0.03, 0.03, 'u'], pole: [1, 0, -0.4] },
+    peek:   { L: [0.09, 0.19, 0.2, 'u'], R: [-0.08, 0.27, 0.34, 'u'], poleR: [0.7, -0.7, -0.1], man: { hand: [null, 'reach'] } },
+    run:    { L: [0.2, 0.04, -0.02, 'u'], R: [-0.2, 0.04, -0.02, 'u'], pole: [0.6, -0.4, -0.7] },
+    write:  { L: [0.15, 0.29, 0.43, 'f'], R: [-0.03, 0.31, 0.47, 'f'], hand: ['rest', 'brush'] },
+    pray:   { L: [0.014, 0.27, 0.2, 'u'], R: [-0.014, 0.27, 0.2, 'u'], reach: 0.05, pole: [0.7, -0.7, -0.1], hand: ['reach', 'reach'] },
+    turn:   { L: 'sit', R: 'sit', man: { hand: ['lap', 'lap'] } },
+    hold:   { L: [0.0, 0.165, 0.21, 'u'], R: [-0.1, 0.12, 0.22, 'u'], poleL: [0.9, -0.45, -0.1], poleR: [0.8, -0.5, 0.0], hand: ['hold', 'hold'] },
+    stroke: { L: 'sit', R: [-0.36, 0.42, 0.3, 'f'], poleR: [0.6, -0.7, -0.2], hand: [null, 'lap'] }
+  };
+  var HKEYS = ['lean', 'yaw', 'hp', 'hy', 'lf', 'ls', 'rf', 'rs', 'lfx', 'lfz', 'rfx', 'rfz', 'wy'];
   var HANDPOSE = { fan: ['relax', 'fan'], write: ['rest', 'brush'], pray: ['reach', 'reach'], hold: ['hold', 'hold'] };
-  HFig.prototype.setPose = function (name, instant) {
+  /* 姿勢の名前 → 体の構え（P）と左右の腕（A）。opt.touch＝撫でる相手の頭（pivot の座標） */
+  HFig.prototype._armsFor = function (name, P, opt) {
+    var self = this, hp = HP[name] || HP.sit, man = !this.fem && !this.child ? hp.man || {} : {}, wy = P.lie ? 0.15 : P.st ? this.wStand : this.wSit;
+    var Rup = new T.Quaternion().setFromEuler(new T.Euler(P.lean || 0, P.yaw || 0, 0)), Rinv = Rup.clone().invert(), out = {};
+    var tgt = { L: man.L || hp.L, R: man.R || hp.R };
+    if (opt && opt.touch && name === 'stroke') {
+      /* 撫でる相手の側の手を、相手の頭の上（少し手前）へ。もう一方は膝に */
+      var t = opt.touch, sd = t.x > 0 ? 'L' : 'R', back = new T.Vector3(t.x, 0, t.z).normalize();
+      tgt[sd] = [t.x - back.x * 0.11, t.y + 0.035, t.z - back.z * 0.11, 'f']; tgt[sd === 'L' ? 'R' : 'L'] = 'sit';
+      out.strokeSide = sd === 'L' ? 1 : -1;
+    } else if (name === 'stroke') out.strokeSide = -1;
+    if (this.kd.shaku && (name === 'sit' || name === 'stand')) tgt.R = [-0.004, 0.1, 0.2, 'u'];
+    ['L', 'R'].forEach(function (k) {
+      var side = k === 'L' ? 1 : -1, T0 = tgt[k];
+      if (T0 === 'sit') T0 = !self.fem && !self.child ? HP.sit.man[k] : HP.sit[k];
+      var v = new T.Vector3(T0[0], T0[1], T0[2]), fr = T0[3];
+      if (fr === 'w' || fr === 'f') { if (fr === 'f') v.y -= wy; v.applyQuaternion(Rinv); }   /* pivot → 上体：腰の高さを引いて上体の傾きを戻す */
+      else if (fr === 'h') v.copy(self._headCenterU(P, [T0[0], T0[1], T0[2]]));
+      var pl = hp['pole' + k] || hp.pole || [0.55, -0.6, -0.5], pole = new T.Vector3(pl[0] * side, pl[1], pl[2]).normalize();
+      var S = self[side > 0 ? 'armL' : 'armR'].position, r = solveArm(S, v, self.armLen.a, self.armLen.b, pole);
+      r.reach = hp.reach || 0; out[k] = r;
+    });
+    var hands = man.hand || hp.hand || null;
+    if (name === 'stroke') hands = out.strokeSide > 0 ? ['lap', null] : [null, 'lap'];
+    if (this.child && hands && !HANDPOSE[name]) hands = null;
+    out.hand = hands;
+    return out;
+  };
+  /* 手に持つ物を、目標の姿勢で上体の座標の向き（ud.rot）になるよう前腕の座標へ置く */
+  HFig.prototype._seat = function (obj, A, P) {
+    var ud = obj.userData.hold; if (!ud) return;
+    var side = ud.side, a = A[side > 0 ? 'L' : 'R'], al = this.armLen;
+    var B = bendTable(al.a, 0.07, al.a + al.b + 0.1, a.fx, a.fz), wp = new T.Vector3(), wq = new T.Quaternion();
+    bendAt(B, al.a + al.b, wp, wq);
+    var Mua = new T.Matrix4().compose(this[side > 0 ? 'armL' : 'armR'].position, new T.Quaternion().setFromEuler(new T.Euler(-a.lf, 0, a.z)), new T.Vector3(1, 1, 1));
+    var Mfu = new T.Matrix4().multiplyMatrices(Mua, new T.Matrix4().compose(wp, wq, new T.Vector3(1, 1, 1)));
+    /* 置きたい所：手首から（上体の座標で）ud.at だけずらし、向きは ud.rot（頭の振りに合わせることも） */
+    var w = new T.Vector3().setFromMatrixPosition(Mfu), q = new T.Quaternion().setFromEuler(new T.Euler(ud.rot[0], ud.rot[1] + (ud.yawHead ? (P.hy || 0) * ud.yawHead : 0), ud.rot[2]));
+    var want = new T.Matrix4().compose(w.add(new T.Vector3(ud.at[0], ud.at[1], ud.at[2])), q, new T.Vector3(1, 1, 1));
+    var loc = new T.Matrix4().copy(Mfu).invert().multiply(want), sc = new T.Vector3();
+    loc.decompose(obj.position, obj.quaternion, sc);
+  };
+  HFig.prototype.setPose = function (name, instant, opt) {
     var TAB = F.POSE_TABLE, P = TAB[name] || TAB.sit, k, self = this;
-    this.pose = TAB[name] ? name : 'sit'; this.P = P;
+    this.pose = TAB[name] ? name : 'sit'; name = this.pose;
+    if (name === 'stroke') {   /* 撫でる：相手の方へ上体と顔を向ける */
+      var P2 = {}; for (k in P) P2[k] = P[k]; P = P2;
+      if (opt && opt.touch) { var ang = Math.atan2(opt.touch.x, opt.touch.z); P.yaw = K.clamp(ang * 0.3, -0.45, 0.45); P.hy = K.clamp(ang * 0.45 - P.yaw, -0.7, 0.7); }
+    }
+    this.P = P; this.touch = opt && opt.touch ? opt.touch.clone() : null;
     var wy = P.lie ? 0.15 : (P.st ? this.wStand : this.wSit);
-    F.PKEYS.forEach(function (key) { self.tgt[key] = key === 'wy' ? wy : (P[key] || 0); if (instant || self.cur[key] == null) self.cur[key] = self.tgt[key]; });
+    var A = this.arms = this._armsFor(name, P, opt);
+    var tv = { lf: A.L.lf, ls: A.L.z, rf: A.R.lf, rs: -A.R.z, lfx: A.L.fx, lfz: A.L.fz, rfx: A.R.fx, rfz: A.R.fz };
+    HKEYS.forEach(function (key) { self.tgt[key] = key === 'wy' ? wy : key in tv ? tv[key] : (P[key] || 0); if (instant || self.cur[key] == null) self.cur[key] = self.tgt[key]; });
     var st = this._lower(!!P.st);
     for (k in this.lowers) this.lowers[k].visible = !P.lie && this.lowers[k] === st;
-    /* 袖：姿勢で袂の垂れる向きが変わるので作り直す（同じ形なら使い回す） */
-    var skey = Math.round(((P.lean || 0) + (P.lf || 0)) * 5) + '|' + Math.round(((P.lean || 0) + (P.rf || 0)) * 5);
+    /* 袖：姿勢で肘の向き・袂の垂れ・押し出しが変わるので作り直す（同じ形なら使い回す） */
+    var skey = name + '|' + [tv.lf, tv.ls, tv.rf, tv.rs, tv.lfx, tv.lfz, tv.rfx, tv.rfz].map(function (x) { return Math.round(x * 50); }).join(',');
     if (skey !== this.sleeveKey) {
       this.sleeveKey = skey;
       [this.sleeveL, this.sleeveR].forEach(function (m) { if (m) { m.geometry.dispose(); m.parent.remove(m); } });
-      this.sleeveL = this._mesh(this.armL, this._sleeve(1, P)); this.sleeveR = this._mesh(this.armR, this._sleeve(-1, P));
+      this.sleeveL = this._mesh(this.armL, this._sleeve(1, P, A.L)); this.sleeveR = this._mesh(this.armR, this._sleeve(-1, P, A.R));
+      this.bent = {};
     }
-    this._longHair(P);
+    this._longHair(P); this._hangHair(P);
     for (k in this.props) { this.props[k].visible = false; if (this.props[k].userData.extra) this.props[k].userData.extra.visible = false; }
-    if (P.prop) { var pr = this._prop(P.prop); pr.visible = true; if (pr.userData.extra) pr.userData.extra.visible = true; }
-    if (this.kd.shaku && (name === 'stand' || name === 'sit')) this._prop('shaku').visible = true;
-    /* 手：女は袖の内に隠す。持つもののある姿勢と、男は見せる */
-    var hp = HANDPOSE[name] || null;
+    if (P.prop) { var pr = this._prop(P.prop); pr.visible = true; this._seat(pr, A, P); if (pr.userData.extra) { pr.userData.extra.visible = true; this._seat(pr.userData.extra, A, P); } }
+    if (this.kd.shaku && (name === 'stand' || name === 'sit')) { var sh = this._prop('shaku'); sh.visible = true; this._seat(sh, A, P); }
+    /* 手：女・子は袖の内に隠す。持つもののある姿勢と、男は見せる */
+    var hp = A.hand || HANDPOSE[name] || null;
+    if (this.kd.shaku && (name === 'stand' || name === 'sit')) hp = [hp ? hp[0] : null, 'grasp'];
     if (this.hand) for (k in this.hand) this.hand[k].visible = false;
     if (hp && root.GJ3_HD_ASSETS.hands) { var hl = hp[0] && this._hand(1, hp[0]), hr = hp[1] && this._hand(-1, hp[1]); if (hl) hl.visible = true; if (hr) hr.visible = true; }
-    this.armL.visible = this.armR.visible = true;
+    /* 臥す：腕は衾の下（見せない） */
+    this.armL.visible = this.armR.visible = !P.lie;
     this.height = (wy + this.dim.H + 0.25) * this.scale;
+    if (instant) this._bendNow();
+  };
+  /* 頭について動く髪の房：上体と頭を深く傾ける姿勢（礼・泣く）では、耳より下を重力の向きへ垂らす（こぼれかかる髪） */
+  HFig.prototype._hangHair = function (P) {
+    var m = this.hairDeco; if (!m || !(this.fem || this.child)) return;
+    var g = m.geometry, pos = g.attributes.position, p0 = g.userData.p0 || (g.userData.p0 = new Float32Array(pos.array));
+    var pitch = (P.lean || 0) + (P.hp || 0), a = Math.abs(pitch) > 0.3 ? -pitch * 0.85 : 0, i;
+    if (g.userData.hang === a) return; g.userData.hang = a;
+    var py = 0.01, pz = -0.05, arr = pos.array;
+    for (i = 0; i < pos.count; i++) {
+      var y = p0[i * 3 + 1], z = p0[i * 3 + 2], w = smooth(0.02, -0.16, y), an = a * w, ca = Math.cos(an), sa = Math.sin(an), dy = y - py, dz = z - pz;
+      arr[i * 3] = p0[i * 3]; arr[i * 3 + 1] = py + dy * ca - dz * sa; arr[i * 3 + 2] = pz + dy * sa + dz * ca;
+    }
+    pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingSphere();
+  };
+  /* いまの肘の角度で、袖を巻き直し、手首を置く */
+  HFig.prototype._bendNow = function () {
+    var c = this.cur, b = this.bent || (this.bent = {});
+    if (this.sleeveL && (b.lx !== c.lfx || b.lz !== c.lfz)) { bendSleeve(this.sleeveL.geometry, c.lfx, c.lfz); this._placeFore(1, c.lfx, c.lfz); b.lx = c.lfx; b.lz = c.lfz; }
+    if (this.sleeveR && (b.rx !== c.rfx || b.rz !== c.rfz)) { bendSleeve(this.sleeveR.geometry, c.rfx, c.rfz); this._placeFore(-1, c.rfx, c.rfz); b.rx = c.rfx; b.rz = c.rfz; }
   };
   HFig.prototype.speak = function (on) { this.spkT = on ? 1 : 0; };
   HFig.prototype.update = function (dt, t) {
-    var c = this.cur, g = this.tgt, k = 1 - Math.exp(-dt * 6), i, key, P = this.P, ph = this.ph, PK = F.PKEYS;
-    for (i = 0; i < PK.length; i++) { key = PK[i]; c[key] += (g[key] - c[key]) * k; }
+    var c = this.cur, g = this.tgt, k = 1 - Math.exp(-dt * 6), i, key, P = this.P, ph = this.ph, PK = HKEYS;
+    for (i = 0; i < PK.length; i++) { key = PK[i]; var d0 = g[key] - c[key]; c[key] = Math.abs(d0) < 2e-3 ? g[key] : c[key] + d0 * k; }
+    this._bendNow();
     this.spk += (this.spkT - this.spk) * (1 - Math.exp(-dt * 5));
-    var br = Math.sin(t * 1.5 + ph), sw = Math.sin(t * 1.05 + ph * 1.7) * 0.012, bob = 0, lean = c.lean, rz = 0, hp = c.hp - this.spk * 0.05;
-    if (P.anim === 'run') { bob = Math.abs(Math.sin(t * 9 + ph)) * 0.05; lean += Math.sin(t * 9 + ph) * 0.04; sw = Math.sin(t * 9 + ph) * 0.3; }
+    var br = Math.sin(t * 1.5 + ph), sw = Math.sin(t * 1.05 + ph * 1.7) * 0.012, bob = 0, lean = c.lean, rz = 0, hp = c.hp - this.spk * 0.05, swL = -sw, swR = sw;
+    if (P.anim === 'run') { bob = Math.abs(Math.sin(t * 9 + ph)) * 0.05; lean += Math.sin(t * 9 + ph) * 0.04; sw = Math.sin(t * 9 + ph) * 0.3; swL = -sw; swR = sw; }
     if (P.anim === 'weep') { rz = Math.sin(t * 13) * 0.008 * (0.5 + 0.5 * Math.sin(t * 0.9)); hp += Math.sin(t * 1.3) * 0.03; }
+    if (this.pose === 'stroke' && this.arms) { var st2 = Math.sin(t * 1.4 + ph) * 0.07; if (this.arms.strokeSide > 0) swL += st2; else swR += st2; }
     this.pivot.position.y = bob;
     this.upper.position.y = c.wy; this.upper.rotation.set(lean + br * 0.006, c.yaw, rz);
     this.headG.rotation.set(hp + br * 0.006, c.hy + Math.sin(t * 0.4 + ph) * 0.03 * (1 - this.spk) + this.spk * Math.sin(t * 1.7) * 0.04, Math.sin(t * 0.31 + ph) * 0.015);
-    this.armL.rotation.set(-c.lf - sw, 0, c.ls + br * 0.008);
-    this.armR.rotation.set(-c.rf + sw, 0, -c.rs - br * 0.008);
+    this.armL.rotation.set(-c.lf + swL, 0, c.ls + br * 0.008);
+    this.armR.rotation.set(-c.rf + swR, 0, -c.rs - br * 0.008);
     /* まばたき */
     this.blinkT -= dt; if (this.blinkT < 0) { this.blink = 1; this.blinkT = 2.5 + ((t * 7.3 + ph) % 3); }
     this.blink = Math.max(0, this.blink - dt * 7);

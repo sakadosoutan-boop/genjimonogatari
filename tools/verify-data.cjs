@@ -95,6 +95,13 @@ function verify(G, only) {
           cast.push(id);
           if (typeof c === 'object') { slotOk(stage, c.at, where); if (c.pose && !S.poses.includes(c.pose)) E(`${where}: 姿勢 ${c.pose} が不正`); }
         });
+        /* 触れ合う姿勢：抱かれた幼子は抱く人と同じ立ち位置に。撫でる人には相手がいる（docs/CONTRACT.md「姿勢」） */
+        const cs = (n.cast || []).map((c) => (typeof c === 'string' ? { id: c } : c));
+        cs.filter((c) => G.chars[c.id] && G.chars[c.id].look && G.chars[c.id].look.kind === 'chigo').forEach((c) => {
+          const hd = cs.filter((h) => h.pose === 'hold');
+          if (hd.length && !hd.some((h) => h.at === c.at)) W(`${where}: 幼子 ${c.id} は hold の人（${hd.map((h) => h.id).join('・')}）と同じ立ち位置に置くと腕の中に抱かれる`);
+        });
+        if (cs.some((c) => c.pose === 'stroke') && cs.length < 2) E(`${where}: stroke（撫でる）の相手がいません`);
       } else if (t === 'say') {
         if (!n.x) E(`${where}: x がありません`);
         if (n.w && !isChar(n.w)) E(`${where}: 話し手 ${n.w} がありません`);
@@ -103,6 +110,7 @@ function verify(G, only) {
         if (n.sfx && !S.sfx.includes(n.sfx)) E(`${where}: sfx ${n.sfx} が不正`);
         if (n.at) { slotOk(stage, n.at, where); if (isChar(n.at) && !cast.includes(n.at)) W(`${where}: at の人物 ${n.at} はこの場面の cast にいません`); }
         Object.keys(n.pose || {}).forEach((p) => { if (!isChar(p)) E(`${where}: pose の人物 ${p} がありません`); if (!S.poses.includes(n.pose[p])) E(`${where}: 姿勢 ${n.pose[p]} が不正`); if (!cast.includes(p)) W(`${where}: pose の人物 ${p} は cast にいません`); });
+        Object.keys(n.pose || {}).forEach((p) => { if (n.pose[p] === 'stroke' && cast.length < 2) E(`${where}: stroke（撫でる）の相手がいません`); });
         if (G.plain(n.x).length > 130) W(`${where}: 一度に出す文が長い（${G.plain(n.x).length} 字）。スマホでは 130 字までが読みやすい`);
       } else if (t === 'gen') {
         if (!gens[n.g]) E(`${where}: 原文の段 ${n.g} がありません`); usedGen[n.g] = true;

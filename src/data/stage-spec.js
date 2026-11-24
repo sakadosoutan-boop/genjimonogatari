@@ -30,9 +30,11 @@
     lights:  ['dawn', 'day', 'dusk', 'night', 'moon'],
     seasons: ['spring', 'summer', 'autumn', 'winter'],
     /* 姿勢 */
-    poses:   ['stand', 'sit', 'bow', 'fan', 'weep', 'lie', 'peek', 'run', 'write', 'pray', 'turn', 'hold'],
+    poses:   ['stand', 'sit', 'bow', 'fan', 'weep', 'lie', 'peek', 'run', 'write', 'pray', 'turn', 'hold', 'stroke'],
     /*   stand 立つ / sit 座る（居る） / bow 平伏 / fan 扇で顔を隠す / weep 袖で顔をおおう / lie 臥す（病）
-     *   peek のぞく / run 走る / write 書く / pray 手を合わせる・経を読む / turn 顔をそむける / hold 幼子を抱く */
+     *   peek のぞく / run 走る / write 書く / pray 手を合わせる・経を読む / turn 顔をそむける / hold 幼子を抱く
+ *   stroke そばに座る子の髪をなでる（いちばん近い子の頭へ手をのばす）
+ *   hold の人と同じ立ち位置に幼子（chigo の人物）を置くと、その幼子は抱かれた嬰児として腕の中に描く（別の人形は立てない） */
     /* カメラの寄り先（at）：'wide'、人物 id、立ち位置の名前のどれか */
     fx:      ['shake', 'petals', 'leaves', 'rain', 'mist', 'dim', 'flash', 'wind'],
     sfx:     ['koto', 'fue', 'kane', 'suzume', 'kaze', 'ame', 'mushi', 'ashioto', 'to', 'namida'],

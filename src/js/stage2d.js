@@ -19,7 +19,7 @@
     kokyu: { seiryoden: [40, 76], kokiden: [42, 44], kiritsubo: [128, 26], michi1: [108, 36], michi2: [88, 50], michi3: [64, 64] },
     watadono: { oku: [112, 30], temae: [48, 78] },
     kitayama: { takami: [112, 34], sakamichi: [72, 66], iwaya: [40, 40] },
-    soubou: { kaki: [80, 93], kakiL: [50, 93], kakiR: [110, 93], jibutsu: [40, 38] }
+    soubou: { kaki: [80, 93], kakiL: [50, 93], kakiR: [110, 93], jibutsu: [40, 38], kamiR: [94, 40] }   // kamiR：尼君（kami）のすぐそば
   };
   var AUTO = ['naka', 'nakaL', 'nakaR', 'kami', 'shimo', 'kamiL', 'kamiR', 'shimoL', 'shimoR', 'sunoko', 'to', 'misu', 'niwa'];
   var KEIGO = { sonkei: ['尊敬', '#6a3d8f'], kenjo: ['謙譲', '#2f5d8c'], teinei: ['丁寧', '#4a7a32'] };   // UI の凡例・3D の矢印と同じ系統
@@ -40,7 +40,7 @@
   function mound(w, h, fill, extra) {
     return '<path d="M' + (-w) + ' 0 Q' + (-w * .92) + ' ' + (-h * .78) + ' 0 ' + (-h) + ' Q' + (w * .92) + ' ' + (-h * .78) + ' ' + w + ' 0 Z" fill="' + fill + '"' + (extra || '') + '/>';
   }
-  function dollInner(id, pose) {
+  function dollInner(id, pose, dir) {
     var c = charOf(id), look = c.look || { kind: 'juni', colors: ['#b9a7c9', '#e6dcee', '#f6f2f8'] };
     var col = look.colors && look.colors.length ? look.colors : ['#b9a7c9'];
     var kind = look.kind || 'juni', k = '', i;
@@ -95,7 +95,9 @@
     if (pose === 'weep') k += '<ellipse cx="-.6" cy="' + (hy + .9) + '" rx="3.4" ry="2" fill="' + col[0] + '" stroke="rgba(30,20,30,.4)" stroke-width=".2"/>';
     if (pose === 'pray') k += '<path d="M-.7 ' + (hy + 5) + ' L0 ' + (hy + 3.2) + ' L.7 ' + (hy + 5) + ' Z" fill="#f6ecdc" stroke="#6a5540" stroke-width=".2"/>';
     if (pose === 'write') k += '<rect x="2.6" y="-3.2" width="5" height="2.2" fill="#fbf6e8" stroke="#8a7a5a" stroke-width=".2" transform="rotate(-8 5 -2)"/>';
-    if (pose === 'hold') k += '<ellipse cx="2.4" cy="-5.4" rx="2.3" ry="1.7" fill="#f6f0f8" stroke="#b9a05a" stroke-width=".25"/>';
+    if (pose === 'hold') k += '<ellipse cx="1.2" cy="-6.2" rx="3" ry="1.6" fill="#fbf8f2" stroke="#b9a58a" stroke-width=".25" transform="rotate(-14 1.2 -6.2)"/><circle cx="3.6" cy="-7" r="1.15" fill="#f6ecdc" stroke="rgba(60,40,30,.4)" stroke-width=".15"/>';
+    // 撫でる：子の側（dir）へ袖をのばし、手を子の頭に
+    if (pose === 'stroke') { var sd = dir || 1; k += '<path d="M' + (sd * 1.5) + ' ' + (hy + 4.6) + ' Q' + (sd * 6) + ' ' + (hy + 1) + ' ' + (sd * 10.5) + ' ' + (hy + 2.4) + ' L' + (sd * 10.4) + ' ' + (hy + 4.4) + ' Q' + (sd * 6) + ' ' + (hy + 3.6) + ' ' + (sd * 2.4) + ' ' + (hy + 7.4) + ' Z" fill="' + col[0] + '"' + ink + '/><ellipse cx="' + (sd * 11.6) + '" cy="' + (hy + 2.6) + '" rx="1.2" ry=".7" fill="#f6ecdc" stroke="rgba(60,40,30,.4)" stroke-width=".15"/>'; }
     // 印（seal）：誰かが一目で分かる小さな名札
     k += '<circle cx="0" cy="-4.2" r="2.5" fill="#fbf5e6" stroke="' + col[0] + '" stroke-width=".55"/><circle cx="0" cy="-4.2" r="2.05" fill="none" stroke="' + col[0] + '" stroke-width=".18"/><text x="0" y="-3.05" text-anchor="middle" font-size="3.1" font-weight="700" fill="#3a2a3c">' + esc(c.seal || '?') + '</text>';
     var tf = 'scale(' + small + ')';
@@ -284,11 +286,11 @@
     c.el.setAttribute('style', 'transform:translate(' + c.x + 'px,' + c.y + 'px) scale(' + s.toFixed(3) + ')');
     c.el.setAttribute('data-y', c.y);
   }
-  function addDoll(id, at, pose) {
+  function addDoll(id, at, pose, dir) {
     var xy = (typeof at === 'string' ? slotXY(S.stage, at) : at) || SLOT.naka;
     var el = g('gj-s2-doll');
     el.setAttribute('data-id', id);
-    el.innerHTML = '<ellipse cx="0" cy=".4" rx="7.5" ry="1.6" fill="rgba(30,20,10,.22)"/>' + dollInner(id, pose || 'sit');
+    el.innerHTML = '<ellipse cx="0" cy=".4" rx="7.5" ry="1.6" fill="rgba(30,20,10,.22)"/>' + dollInner(id, pose || 'sit', dir);
     S.cast[id] = { el: el, x: xy[0], y: xy[1], at: at, pose: pose || 'sit' };
     S.order.push(id);
     place(id);
@@ -321,12 +323,18 @@
       var id = typeof c === 'string' ? c : c.id, at = typeof c === 'object' ? c.at : null;
       if (!id || S.cast[id]) return;
       if (!at || !slotXY(n.stage, at)) { at = AUTO.filter(function (a) { return !used[a]; })[0] || 'naka'; }
+      /* 幼子（chigo）を hold の人と同じ立ち位置に置いたとき：抱かれた嬰児として、その人の胸に（別の人形は立てない） */
+      var hk = /chigo/.test((charOf(id).look || {}).kind || '') && S.order.filter(function (k) { return S.cast[k].at === at && S.cast[k].pose === 'hold'; })[0];
+      if (hk) { S.cast[id] = { el: g(), x: S.cast[hk].x + 1, y: S.cast[hk].y - 2, at: at, pose: 'held', held: hk }; return; }
       var xy = slotXY(n.stage, at).slice();
-      if (used[at]) { xy[0] += 7 * used[at]; xy[1] += 2 * used[at]; }   // 同じ場所に重なるときは少しずらす
+      var lieAt = used[at] && S.order.some(function (k) { return S.cast[k].at === at && S.cast[k].pose === 'lie'; });
+      if (lieAt) { xy[0] += 10 + 7 * (used[at] - 1); xy[1] -= 3; }       // 臥している人のかたわら（少し奥）に
+      else if (used[at]) { xy[0] += 7 * used[at]; xy[1] += 2 * used[at]; }   // 同じ場所に重なるときは少しずらす
       used[at] = (used[at] || 0) + 1;
       addDoll(id, xy, typeof c === 'object' ? c.pose : null);
       S.cast[id].at = at;
     });
+    S.order.forEach(function (k) { if (S.cast[k].pose === 'stroke') pose(k, 'stroke'); });
     sortDolls();
     var spec = G.stageSpec && G.stageSpec.stages && G.stageSpec.stages[n.stage];
     S.label.textContent = spec ? spec.name : '';
@@ -354,9 +362,12 @@
     });
   }
   function pose(id, p) {
-    var c = S.cast[id]; if (!c) return;
+    var c = S.cast[id]; if (!c || c.held) return;
     c.pose = p;
-    c.el.innerHTML = '<ellipse cx="0" cy=".4" rx="7.5" ry="1.6" fill="rgba(30,20,10,.22)"/>' + dollInner(id, p);
+    /* 撫でる：いちばん近い人の側へ手をのばす */
+    var dir = 1, bd = 1e9;
+    if (p === 'stroke') S.order.forEach(function (k) { var o = S.cast[k]; if (k === id) return; var d = Math.abs(o.x - c.x) + Math.abs(o.y - c.y) * 0.5; if (d < bd) { bd = d; dir = o.x < c.x ? -1 : 1; } });
+    c.el.innerHTML = '<ellipse cx="0" cy=".4" rx="7.5" ry="1.6" fill="rgba(30,20,10,.22)"/>' + dollInner(id, p, dir);
   }
   function fx(name) {
     if (!S.box) return;

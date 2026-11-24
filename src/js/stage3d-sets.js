@@ -302,7 +302,7 @@
     var d = den(env, { back: ['kabe', 'fusuma', 'misu', 'shitomi'], old: 1, ground: '#c9bd9c' }), g = d.g;
     tatami(g, 0.4, -2.9, 0, 'kourai'); d.slots.kami[3] = 0.06;
     tatami(g, 0.3, -0.95, 0, 'kourai');
-    kicho(g, env, -1.6, -3.3, 0.3, 'nibi'); kicho(g, env, 3.4, -2.4, -0.9, 'nibi');
+    kicho(g, env, -1.35, -3.55, 0.3, 'nibi'); kicho(g, env, 3.4, -2.4, -0.9, 'nibi');   /* 左の几帳は kamiL（母の座）にかからないよう奥へ */
     toudai(g, env, 1.6, -2.5);
     /* 草も高くなり、野分にいとど荒れたる庭。倒れた透垣 */
     var sx = d.sx;
@@ -352,9 +352,11 @@
     for (var fz2 = -1.5; fz2 < FENCE_Z; fz2 += 0.1) { var hh = 1.2 * (0.85 + r() * 0.2); K.bx(g, 0.035, hh, 0.035, m.shiba, -8 + (r() - 0.5) * 0.06, gy + hh / 2, fz2); }
     /* 夕暮れの霞 */
     kasumi(g, env, -2, 1.8, FENCE_Z + 3.5, 26, 5); kasumi(g, env, 5, 2.6, -7, 30, 7);
-    d.slots.kami = [-0.7, 0.75, 0.75, 0.065]; d.slots.kamiL = [-2.3, 0.6, 1.4, 0]; d.slots.kamiR = [0.9, 0.6, 0.1, 0];
-    d.slots.naka = [1.7, -1.1, 0.2, 0.065]; d.slots.nakaL = [0.2, -1.6, 0.4, 0]; d.slots.nakaR = [3.0, -1.4, -0.2, 0];
-    d.slots.shimo = [3.3, 0.9, -0.5, 0]; d.slots.shimoL = [2.2, 1.2, 0.3, 0]; d.slots.shimoR = [4.6, 0.6, -0.9, 0];
+    /* kamiR：尼君のすぐそば（左前、同じ畳の上）。若紫が尼君の方へ半ば向いて座る（髪をなでられる距離） */
+    d.slots.kami = [-0.7, 0.75, 0.75, 0.065]; d.slots.kamiL = [-2.3, 0.6, 1.4, 0]; d.slots.kamiR = [-0.16, 0.82, -0.95, 0.065];
+    /* naka・shimo は上座（kami の僧都・尼君）の方へ向く（客と主が向き合って話す） */
+    d.slots.naka = [1.7, -1.1, -0.62, 0.065]; d.slots.nakaL = [0.2, -1.6, 0.4, 0]; d.slots.nakaR = [3.0, -1.4, -0.2, 0];
+    d.slots.shimo = [3.3, 0.9, -1.25, 0]; d.slots.shimoL = [2.2, 1.2, 0.3, 0]; d.slots.shimoR = [4.6, 0.6, -0.9, 0];
     d.slots.sunoko = [1.6, d.fz + 0.65, 0, -0.1]; d.slots.niwa = [3.2, 4.6, PI, -FH]; d.slots.to = [d.rx - 0.5, -0.6, -PI / 2, 0];
     sl(d, 'jibutsu', jx + 1.7, jz + 0.1, -PI / 2, 0);
     sl(d, 'kaki', 0.5, FENCE_Z + 0.75, PI, -FH); sl(d, 'kakiL', -1.1, FENCE_Z + 0.8, PI - 0.2, -FH); sl(d, 'kakiR', 2.1, FENCE_Z + 0.8, PI + 0.2, -FH);
@@ -395,7 +397,7 @@
       oku: [0, zs(0.9), 0], temae: [0, zs(0.08), PI], kami: [0, zs(0.88), 0], kamiL: [-0.8, zs(0.8), 0.3], kamiR: [0.8, zs(0.8), -0.3],
       naka: [0, zs(0.5), PI], nakaL: [-0.85, zs(0.55), 1.2], nakaR: [0.85, zs(0.45), -1.2],
       shimo: [0, zs(0.2), PI], shimoL: [-0.8, zs(0.27), 2.7], shimoR: [0.8, zs(0.15), -2.7],
-      sunoko: [0.9, zs(0.66), -PI / 2], niwa: [-7, 1, PI / 2, -FH], misu: [wd / 2 + 1.0, zs(0.36), -PI / 2], to: [-wd / 2 + 0.5, zs(0.62), PI / 2]
+      sunoko: [0.9, zs(0.66), -PI / 2], niwa: [-7, 1, PI / 2, -FH], misu: [wd / 2 + 1.0, zs(0.43), -PI / 2], to: [-wd / 2 + 0.5, zs(0.62), PI / 2]
     };
     var env2 = env, d = { g: g, slots: slots, cam: { t: [0, 0.6, -7.2], az: 0.2, el: 0.74, rh: 6.5, rv: 9.2 }, figScale: 1, focusDist: 5.2, shadowR: 14, standing: 1, amb: { x: 0, z: -7, r: 8, y: 6 } };
     return finish(d, env);

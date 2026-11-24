@@ -39,7 +39,8 @@
     write: { lean: 0.30, hp: 0.32, lf: 0.8, ls: 0.0, rf: 1.05, rs: -0.16, prop: 'desk' },
     pray:  { lean: 0.15, hp: 0.30, lf: 1.28, ls: -0.44, rf: 1.28, rs: -0.44, prop: 'juzu' },
     turn:  { lean: 0.06, yaw: 0.5, hp: 0.16, hy: 0.7, lf: 1.4, ls: -0.32, rf: 0.6, rs: 0.1 },
-    hold:  { lean: 0.13, hp: 0.32, lf: 1.02, ls: -0.3, rf: 1.02, rs: -0.3, prop: 'chigo' }
+    hold:  { lean: 0.13, hp: 0.32, lf: 1.02, ls: -0.12, rf: 0.95, rs: -0.06, prop: 'chigo' },
+    stroke:{ lean: 0.12, hp: 0.28, lf: 0.62, ls: 0.1, rf: 1.25, rs: 0.55 }
   };
   var PKEYS = ['lean', 'yaw', 'hp', 'hy', 'lf', 'ls', 'rf', 'rs', 'wy'];
   F.POSES = Object.keys(POSE);
