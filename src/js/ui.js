@@ -37,14 +37,14 @@
       '<div class="gj-notes" aria-live="polite"></div>' +
       '<div class="gj-cutin" aria-live="polite"></div><div class="gj-caption" aria-live="polite"></div>' +
       '<button type="button" class="gj-card" data-gj="card" hidden></button>' +
-      '<section class="gj-panel" aria-label="本文の窓" hidden><div class="gj-panel-tools"><button type="button" class="gj-mini" data-gj="hide" title="文字を隠して舞台を見る（H キー）">文字を隠す</button></div><div class="gj-panel-body" tabindex="-1"></div><div class="gj-more" aria-hidden="true">▼ 続き</div></section>' +
+      '<section class="gj-panel" aria-label="本文の窓" hidden><div class="gj-panel-tools"><button type="button" class="gj-mini" data-gj="hide" title="文字を隠して舞台を見る（H キー）">文字を隠す</button></div><div class="gj-panel-scroll"><div class="gj-panel-body" tabindex="0" role="region" aria-label="本文・解説"></div><div class="gj-more" aria-hidden="true">▼ 続き</div></div><footer class="gj-panel-footer" hidden></footer></section>' +
       '<button type="button" class="gj-reveal" data-gj="reveal" hidden><span>文字を表示</span></button>' +
       '<main class="gj-screen" hidden></main>' +
       '<div class="gj-fade" aria-hidden="true"></div>' +
       '<div class="gj-modal" hidden><div class="gj-modal-box" role="dialog" aria-modal="true"><header><button type="button" class="gj-mini" data-gj="modalback" hidden>← 戻る</button><h3></h3><button type="button" class="gj-ib gj-x" data-gj="closemodal" aria-label="閉じる">×</button></header><div class="gj-modal-body"></div></div></div>' +
       '<div class="gj-toast" role="status" aria-live="polite"></div>';
     el = { root: ui, stage: stage, top: ui.querySelector('.gj-top'), meters: ui.querySelector('.gj-meters'), cutin: ui.querySelector('.gj-cutin'), caption: ui.querySelector('.gj-caption'),
-      notes: ui.querySelector('.gj-notes'), card: ui.querySelector('.gj-card'), panel: ui.querySelector('.gj-panel'), body: ui.querySelector('.gj-panel-body'), reveal: ui.querySelector('.gj-reveal'),
+      notes: ui.querySelector('.gj-notes'), card: ui.querySelector('.gj-card'), panel: ui.querySelector('.gj-panel'), body: ui.querySelector('.gj-panel-body'), footer: ui.querySelector('.gj-panel-footer'), reveal: ui.querySelector('.gj-reveal'),
       screen: ui.querySelector('.gj-screen'), fade: ui.querySelector('.gj-fade'), modal: ui.querySelector('.gj-modal'), toast: ui.querySelector('.gj-toast'), sound: ui.querySelector('[data-gj="sound"]') };
     ui.addEventListener('click', onClick);
     ui.addEventListener('input', function (e) { var t = e.target; if (t && t.getAttribute && t.getAttribute('data-st') && G.Study) G.Study.handle(t.getAttribute('data-st'), t); });
@@ -81,17 +81,22 @@
     var b = el.body, more = b.scrollHeight - b.clientHeight - b.scrollTop > 6;
     el.panel.classList.toggle('gj-has-more', more);
   }
-  function setBody(html, cls) {
+  function panelFooter(html) {
+    el.footer.innerHTML = html || '';
+    el.footer.hidden = !html;
+  }
+  function setBody(html, cls, footer) {
     stopTyping();
     el.panel.hidden = false;
     el.panel.className = 'gj-panel' + (cls ? ' ' + cls : '');
     el.body.innerHTML = html;
+    panelFooter(footer);
     el.body.scrollTop = 0;
     checkMore();
     return el.body;
   }
   function focusNext() {
-    var b = el.body.querySelector('.gj-next');
+    var b = el.footer.querySelector('.gj-next');
     if (b && b.focus) try { b.focus({ preventScroll: true }); } catch (e) {}
   }
   function nav(action, label, left) {
@@ -319,7 +324,7 @@
     var cls = 'gj-say' + (gen ? ' gen' : '') + (narr ? ' narr' : ' line') + (m.b ? ' b-' + m.b : '');
     var tags = (gen ? '<span class="gj-tag gen" title="原文そのままの引用">原文</span>' : '') + (m.b && BUBBLE[m.b] ? '<span class="gj-tag bub b-' + m.b + '">' + BUBBLE[m.b] + '</span>' : '') + (m.label ? '<span class="gj-tag note">' + esc(m.label) + '</span>' : '');
     var wk = m.b === 'waka' ? wakaSplit(m.x) : null;
-    setBody('<div class="' + cls + '" data-tap="1">' + speakerHTML(m.w, m.pov, tags) + '<div class="gj-text" lang="ja"></div></div>' + nav('next'), 'gj-p-say' + (narr ? ' gj-p-narr' : ''));
+    setBody('<div class="' + cls + '" data-tap="1">' + speakerHTML(m.w, m.pov, tags) + '<div class="gj-text" lang="ja"></div></div>', 'gj-p-say' + (narr ? ' gj-p-narr' : ''), nav('next'));
     var node = el.body.querySelector('.gj-text');
     if (wk) {
       var U = G.Study.unitsHTML;
@@ -336,7 +341,7 @@
     focusNext();
   }
   function gen(ch, g) {
-    setBody(G.Study.genHTML(ch, g, { compact: true }) + nav('next', '原文帳に綴じて次へ', '<span class="gj-taphint">綴じた段は、上の「原文帳」でいつでも読めます</span>'), 'gj-p-gen');
+    setBody(G.Study.genHTML(ch, g, { compact: true }), 'gj-p-gen', nav('next', '原文帳に綴じて次へ', '<span class="gj-taphint">綴じた段は、上の「原文帳」でいつでも読めます</span>'));
     focusNext();
   }
 
@@ -417,7 +422,8 @@
     if (slot) slot.innerHTML = k;
     var hint = el.body.querySelector('.gj-hint'); if (hint) hint.hidden = true;
     var navEl = el.body.querySelector('.gj-ask-nav');
-    if (navEl) navEl.outerHTML = nav('next', '次へ', '<span class="gj-taphint">解説を読んだら、次へ</span>');
+    if (navEl) navEl.remove();
+    panelFooter(nav('next', '次へ', '<span class="gj-taphint">解説を読んだら、次へ</span>'));
     var fb = el.body.querySelector('.gj-fb');
     if (fb && fb.scrollIntoView) {
       // 選んだ札が見えるところまで戻し、その下に解説が続くことを示す

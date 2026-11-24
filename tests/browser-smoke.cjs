@@ -78,6 +78,21 @@ async function story(browser, name, viewport, view) {
     assert.deepEqual(small, [], name + ': ' + label + ' タップ領域は 44px 以上');
   };
 
+  const nextOnScreen = async (label) => {
+    const next = p.locator('.gj-panel .gj-next');
+    assert.ok(await next.isVisible(), name + ': ' + label + ' の「次へ」がある');
+    const atTop = await next.evaluate((button) => {
+      const body = document.querySelector('.gj-panel-body');
+      const previous = body.scrollTop;
+      body.scrollTop = 0;
+      const r = button.getBoundingClientRect();
+      const target = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      body.scrollTop = previous;
+      return button.contains(target);
+    });
+    assert.ok(atTop, name + ': ' + label + ' の「次へ」はスクロール前から押せる');
+  };
+
   // 本物の帖：表紙 → 帖 → はじめから → 数ノード
   for (const id of real) {
     await p.click('.gj-chap[data-ch="' + id + '"]');
@@ -98,8 +113,18 @@ async function story(browser, name, viewport, view) {
   // 架空の帖を最後まで
   await p.click('.gj-chap[data-ch="tameshi"]');
   await p.click('[data-gj="start"]');
+  await p.waitForFunction(() => window.GENJI.Engine._mode() === 'card');
+  await p.click('.gj-top [data-gj="menu"]');
+  assert.ok(await p.isVisible('.gj-modal .gj-menu'), name + ': 段の開始カードからメニューを開ける');
+  if (phone) {
+    await p.click('.gj-modal [data-gj="settings"]');
+    await p.click('.gj-modal [data-gj="set"][data-k="big"]');
+  }
+  await p.click('[data-gj="closemodal"]');
+  await p.click('.gj-card');
   await play(p, () => window.GENJI.Engine._mode() === 'say');
   await check('台詞');
+  await nextOnScreen('台詞');
   if (!phone) { await p.keyboard.press('Enter'); }
   // 文字を隠す → 戻す
   await p.click('[data-gj="hide"]');
@@ -109,6 +134,11 @@ async function story(browser, name, viewport, view) {
   // 原文の段：層を重ねる
   await play(p, () => window.GENJI.Engine._mode() === 'gen');
   await check('原文の段');
+  await nextOnScreen('原文の段');
+  if (phone && stageKind !== '3D') {
+    const stage = await rect(p, '.gj-s2-box'), panel = await rect(p, '.gj-panel');
+    assert.ok(stage.bottom <= panel.top + 1, name + ': 絵巻の舞台と本文の窓が重ならない');
+  }
   await p.click('.gj-panel [data-st="layer"][data-l="hinshi"]');
   assert.ok(await p.isVisible('.gj-panel .gj-tok'), name + ': 品詞分解の層');
   await p.click('.gj-panel [data-st="layer"][data-l="keigo"]');
@@ -130,6 +160,7 @@ async function story(browser, name, viewport, view) {
   await p.click('.gj-opt[data-i="0"]');
   assert.ok(await p.isVisible('.gj-fb.ok'), name + ': 解説が出る');
   await check('解説');
+  await nextOnScreen('解説');
   // 敬語：矢印の帯
   await play(p, () => window.GENJI.Engine._state().node === 'q-keigo' && window.GENJI.Engine._mode() === 'feedback');
   assert.ok(await p.isVisible('.gj-arrow'), name + ': 敬意の方向の帯');
@@ -152,7 +183,7 @@ async function story(browser, name, viewport, view) {
   await p.click('[data-gj="closemodal"]');
   await p.click('.gj-end [data-gj="title"]');
   await p.click('.gj-screen [data-gj="settings"]');   // 上の帯にも同じボタンがある（表紙では隠れている）
-  await p.click('[data-gj="set"][data-k="big"]');
+  if (!phone) await p.click('[data-gj="set"][data-k="big"]');
   assert.ok(await p.evaluate(() => document.documentElement.classList.contains('gj-big')), name + ': 文字を大きく');
   await p.click('[data-gj="closemodal"]');
   assert.deepEqual(errors, [], name + ': エラーなし');
