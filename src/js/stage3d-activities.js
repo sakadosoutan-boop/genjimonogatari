@@ -131,7 +131,7 @@
     /* 垣から一歩さがった所から、望遠ぎみに。手前の小柴垣が画面に掛かり、部屋は垣の向こうに遠く見える */
     S.fovOver = S.w / S.h < 0.8 ? 50 : 40; ctx.resize();
     ctx.fx('mist');
-    var x = 0.4, tx = 0.4, pitch = 0, tp = 0, found = {}, nFound = 0, busy = true, idle = 0, dwell = 0, cur = null, autoT = null, done = false;
+    var x = 0.4, tx = 0.4, pitch = 0, tp = 0, found = {}, nFound = 0, busy = true, dwellSince = 0, cur = null, autoT = null, done = false;
     /* 走り来たる女子は、ほかの人を見つけたあとで走ってくる */
     var runner = S.figs.murasaki && targets.some(function (t) { return t.id === 'murasaki'; }) ? S.figs.murasaki[0] : null, runT = -1, runTo = null, runFrom = null;
     if (runner) { runTo = runner.root.position.clone(); var d0 = set.slots.to || [6, -0.6]; runFrom = new T.Vector3(d0[0], runTo.y, d0[1]); runner.root.visible = false; }
@@ -158,26 +158,52 @@
         g2.lineWidth = 3 + rr() * 6; g2.beginPath(); g2.moveTo(x0, y0); g2.quadraticCurveTo(x0 + (rr() - 0.5) * 120, y0 - 60 - rr() * 80, x0 + (rr() - 0.5) * 200, y0 - 120 - rr() * 120); g2.stroke();
       }
     }
-    var ret = ctx.div('gj3-reticle', ui);
-    ret.innerHTML = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"/><circle class="gj3-ring" cx="50" cy="50" r="46" stroke-dasharray="289" stroke-dashoffset="289"/></svg>';
+    var controls = ctx.div('gj3-kaimami-controls', ui);
+    controls.hidden = true;
+    controls.setAttribute('role', 'group');
+    controls.setAttribute('aria-label', '垣間見の操作');
+    controls.setAttribute('aria-describedby', 'gj3-kaimami-hint');
+    var ret = button(ctx, 'gj3-reticle', '<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46"/><circle class="gj3-ring" cx="50" cy="50" r="46" stroke-dasharray="289" stroke-dashoffset="289"/></svg>', controls);
+    ret.setAttribute('data-a3', 'peek');
+    ret.setAttribute('aria-label', '輪の中の人を見る');
+    ret.disabled = true;
     var ring = ret.querySelector('.gj3-ring');
-    var note = ctx.div('gj3-note gj3-plate', ui), hint = ctx.div('gj3-hint gj3-plate', ui);
-    var cl = button(ctx, 'gj3-chev gj3-l', '‹', ui), cr = button(ctx, 'gj3-chev gj3-r', '›', ui);
-    var au = button(ctx, 'gj3-auto gj3-plate', '手がかり', ui); au.setAttribute('data-a3', 'auto');
-    hint.textContent = '画面を左右になぞって、垣のすき間からのぞく。輪の中に人をとらえる';
+    var note = ctx.div('gj3-note gj3-plate', controls), hint = ctx.div('gj3-hint gj3-plate', controls);
+    note.setAttribute('role', 'status');
+    var cl = button(ctx, 'gj3-chev gj3-l', '‹', controls), cr = button(ctx, 'gj3-chev gj3-r', '›', controls);
+    cl.setAttribute('aria-label', '左を見る'); cr.setAttribute('aria-label', '右を見る');
+    var au = button(ctx, 'gj3-auto gj3-plate', '手がかり', controls); au.setAttribute('data-a3', 'auto');
+    hint.id = 'gj3-kaimami-hint';
+    hint.textContent = 'なぞるか〈 〉で見回す。輪が光ったら、輪を押すか、そのまま待つ。';
     function upNote() { note.innerHTML = 'あと <b>' + (targets.length - nFound) + '</b>'; }
     upNote();
     function nearest() { var best = null, bd = 1e9; targets.forEach(function (t) { if (!avail(t)) return; var p = S.figs[t.id][0].root.position, d = Math.abs(p.x - x); if (d < bd) { bd = d; best = t; } }); return best; }
-    function nudge(dir) { tx = clamp(tx + dir * 1.1, -4.2, 5.6); idle = 0; hint.style.opacity = 0; }
-    cl.addEventListener('click', function () { nudge(-1); }); cr.addEventListener('click', function () { nudge(1); });
-    au.addEventListener('click', function () { var t = nearest(); if (t) { autoT = t; hint.style.opacity = 0; } });
-    var offDrag = dragLook(S, function (dx, dy) { tx = clamp(tx - dx * 7.5, -4.2, 5.6); tp = clamp(tp - dy * 0.8, -0.3, 0.4); idle = 0; autoT = null; hint.style.opacity = 0; });
-    var offKeys = keys({ ArrowLeft: function (d) { if (d) nudge(-1); }, ArrowRight: function (d) { if (d) nudge(1); } });
+    function look(dx, dy) {
+      if (busy || done) return;
+      tx = clamp(tx + dx, -4.2, 5.6);
+      tp = clamp(tp + dy, -0.3, 0.4);
+      autoT = null;
+    }
+    cl.addEventListener('click', function () { look(-1.1, 0); });
+    cr.addEventListener('click', function () { look(1.1, 0); });
+    ret.addEventListener('click', function () { if (cur && !busy && !done) discover(cur); });
+    au.addEventListener('click', function () { if (!busy && !done) autoT = nearest(); });
+    var offDrag = dragLook(S, function (dx, dy) { look(-dx * 7.5, -dy * 0.8); });
+    var offKeys = keys({
+      ArrowLeft: function (d) { if (d) look(-1.1, 0); }, ArrowRight: function (d) { if (d) look(1.1, 0); },
+      ArrowUp: function (d) { if (d) look(0, 0.08); }, ArrowDown: function (d) { if (d) look(0, -0.08); }
+    });
     act.cleanup = function () { offDrag(); offKeys(); };
     var v = new T.Vector3();
 
     function discover(t) {
-      busy = true; found[t.id] = 1; nFound++; upNote(); ring.setAttribute('stroke-dashoffset', 289); ret.classList.remove('gj3-hit'); autoT = null;
+      busy = true;
+      controls.hidden = true;
+      found[t.id] = 1; nFound++; upNote();
+      cur = autoT = null;
+      ret.disabled = true;
+      ring.setAttribute('stroke-dashoffset', 289);
+      ret.classList.remove('gj3-hit');
       if (t.gen && cb.gen) try { cb.gen(t.gen); } catch (e) {}
       ctx.say(cb, { w: 'kataribe', x: t.x, src: 'gen' })
         .then(function () { return t.yaku ? ctx.say(cb, { x: '（' + (t.label || '') + '）' + t.yaku }) : null; })
@@ -185,7 +211,7 @@
           if (act.dead) return;
           if (nFound >= targets.length) { done = true; return ctx.say(cb, cfg.outro).then(function () { finish({ ok: true, kind: 'kaimami', found: nFound }); }); }
           if (runner && runT < 0 && targets.every(function (q) { return q.id === 'murasaki' || found[q.id]; })) { runT = 0; runner.root.visible = true; runner.setPose('run'); }
-          busy = false; idle = 0;
+          busy = false; controls.hidden = false;
         });
     }
     act.frame = function (dt) {
@@ -199,12 +225,13 @@
       var cam = S.camera, eye = fence.eye != null ? fence.eye + 0.1 : 1.2, cz = fence.z + 1.2;
       if (autoT && S.figs[autoT.id]) {   // 手がかり：その人の頭が輪の真ん中に来る向きへ
         var hp = ctx.headOf(autoT.id, v);
-        if (hp) { tx = clamp(hp.x, -4.2, 5.6); tp = clamp(((hp.y - eye) / Math.max(0.5, cz - hp.z) * 6 + 0.25) / 6, -0.3, 0.4); }
+        if (hp) { tx = clamp(hp.x, -4.2, 5.6); tp = clamp(((hp.y - eye) / Math.max(0.5, cz - hp.z) * 8 + 0.12) / 6, -0.3, 0.4); }
       }
       pitch += (tp - pitch) * (1 - Math.exp(-dt * 4));
       x += (tx - x) * (1 - Math.exp(-dt * 4));
       cam.position.set(x, eye, cz);
       cam.lookAt(x, eye - 0.12 + pitch * 6, cz - 8);
+      cam.updateMatrixWorld();
       S.cam.t.set(x, 1, 0); S.cam.dist = 7;
       if (busy || done) return;
       /* 輪の中にとらえているか */
@@ -215,14 +242,23 @@
         if (q[2] > 1) return; var d = Math.sqrt(Math.pow(q[0] - cx, 2) + Math.pow(q[1] - cy, 2));
         if (d < r && d < hd) { hd = d; hit = t; }
       });
-      if (hit !== cur) { cur = hit; dwell = 0; }
-      ret.classList.toggle('gj3-hit', !!hit);
-      if (hit) { dwell += dt; idle = 0; ring.setAttribute('stroke-dashoffset', 289 * (1 - Math.min(1, dwell / 0.9))); if (dwell >= 0.9) { discover(hit); return; } }
-      else { ring.setAttribute('stroke-dashoffset', 289); idle += dt; }
-      /* しばらく見つからなければ、どちらにいるかを示す */
-      var n = idle > 5 ? nearest() : null, px = n ? S.figs[n.id][0].root.position.x : 0;
-      cl.classList.toggle('gj3-show', !!n && px < x - 0.3); cr.classList.toggle('gj3-show', !!n && px > x + 0.3);
+      var now = root.performance.now();
+      if (hit !== cur) {
+        cur = hit; dwellSince = now;
+        ret.disabled = !hit;
+        ret.classList.toggle('gj3-hit', !!hit);
+        ring.setAttribute('stroke-dashoffset', 289);
+      }
+      if (hit) {
+        var progress = Math.min(1, (now - dwellSince) / 900);
+        ring.setAttribute('stroke-dashoffset', 289 * (1 - progress));
+        if (progress === 1) discover(hit);
+      }
     };
-    ctx.say(cb, cfg.intro).then(function () { if (!act.dead) busy = false; });
+    ctx.say(cb, cfg.intro).then(function () {
+      if (act.dead) return;
+      if (!targets.length) return finish({ ok: true, kind: 'kaimami', found: 0 });
+      busy = false; controls.hidden = false;
+    });
   };
 })(typeof window !== 'undefined' ? window : globalThis);

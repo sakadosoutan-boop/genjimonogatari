@@ -47,6 +47,8 @@ const STEP = () => {
   }
   b = vis('[data-g="check"]') || vis('[data-s2="step"]') || vis('[data-s2="gap"]');
   if (b) return b.click();
+  b = vis('[data-a3="peek"]');
+  if (b) return b.click();
   // 3D の遊び：補助ボタン（自動で歩く・手がかり）で進める
   b = vis('[data-a3="auto"]');
   if (b && !b.classList.contains('gj3-on')) return b.click();
@@ -140,6 +142,15 @@ async function story(browser, name, viewport, view) {
   await check('並べ替え');
   await play(p, () => window.GENJI.Engine._state().node === 'g-musubi');
   await check('結ぶ');
+  await p.click('.gj-ms-item.L[data-id="l1"]');
+  await p.click('.gj-ms-item.R[data-id="r1"]');
+  assert.equal(await p.textContent('.gj-ms-item.R[data-id="r1"] .gj-ms-n'), '1', name + ': 左右の札を一回ずつ押すと結べる');
+  await play(p, () => window.GENJI.Engine._state().node === 'g-kaimami');
+  if (stageKind === '3D') {
+    await play(p, () => window.GENJI.Engine._mode() === 'game' && document.querySelector('.gj3-kaimami-controls:not([hidden])'));
+    await p.getByRole('button', { name: '右を見る' }).click();
+    assert.match(await p.textContent('.gj3-kaimami-controls .gj3-hint'), /輪が光ったら/);
+  }
   await play(p, () => window.GENJI.Engine._mode() === 'end');
   assert.ok(await p.isVisible('.gj-end'), name + ': 結末とふり返り');
   assert.match(await p.textContent('.gj-end'), /春の終わり/, name + ': 本文どおりの結末');

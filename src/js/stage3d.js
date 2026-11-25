@@ -61,6 +61,7 @@
     S.el = el;
     S.wrap = div('gj3-root', el);
     S.cv = div('gj3-canvas', S.wrap, 'canvas');
+    S.cv.setAttribute('aria-hidden', 'true');
     try {
       S.renderer = new T.WebGLRenderer({ canvas: S.cv, antialias: S.q === 'high', alpha: false, powerPreference: 'high-performance' });
     } catch (e) { S.sup = false; el.removeChild(S.wrap); S.el = null; return false; }
@@ -71,7 +72,7 @@
     S.camera = new T.PerspectiveCamera(30, 1, 0.3, 400);
     S.cam = { t: new T.Vector3(), az: 0.4, el: 0.85, dist: 20 }; S.goal = { t: new T.Vector3(), az: 0.4, el: 0.85, dist: 20 };
     S.kumo = div('gj3-kumo', S.wrap); S.moon = div('gj3-moon', S.wrap); S.veil = div('gj3-veil', S.wrap);
-    S.svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg'); S.svg.setAttribute('class', 'gj3-arrows'); S.wrap.appendChild(S.svg);
+    S.svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg'); S.svg.setAttribute('class', 'gj3-arrows'); S.svg.setAttribute('aria-hidden', 'true'); S.wrap.appendChild(S.svg);
     S.legend = div('gj3-legend', S.wrap); S.legend.hidden = true;
     S.ui = div('gj3-act', S.wrap);
     S.onRes = function () { resize(); };

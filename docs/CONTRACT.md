@@ -108,7 +108,7 @@ GENJI.registerChapter({
 | `wataru` | 3D | 渡殿を歩いて渡る。`{ stage: 'kokyu'|'watadono', from, to, intro, outro, events: [{ at: 0〜1（道のり）, w?, x, fx?, kind?: 'whisper'|'block'|'dirt'|'door' }] }` |
 | `kaimami` | 3D | 垣間見。`{ stage: 'soubou', intro, outro, targets: [{ id: 人物id, label, x: 見つけたときに出す原文の描写, yaku, gen? }] }` |
 | `narabe` | DOM | 並べ替え。`{ q, items: [{id, x, sub?}], order: [正しい順の id], top, bottom, exp }` |
-| `musubi` | DOM | 線で結ぶ。`{ q, left: [{id, x}], right: [{id, x}], pairs: {左id: 右id}, exp }` |
+| `musubi` | DOM | 左右の札で組を作り、同じ番号を添える。`{ q, left: [{id, x}], right: [{id, x}], pairs: {左id: 右id}, exp }` |
 
 授業モードでは遊びに失敗はない（`go` へ進む）。
 
