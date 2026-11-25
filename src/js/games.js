@@ -1,4 +1,4 @@
-/* 小さな遊び（DOM）：narabe＝並べ替え、musubi＝線で結ぶ。どちらもタップだけで操作できる。
+/* 小さな遊び（DOM）：narabe＝並べ替え、musubi＝組を作る。どちらもタップだけで操作できる。
  * GENJI.Games.run(kind, cfg, host, opts) → Promise<{ ok, tries }>
  *   opts.classroom … 授業モード。一度目のまちがいは選び直し、二度目に正解と解説を見せる（失敗はない）。
  *   opts.seed      … 並べる順のたね（再開しても同じ並びにする）。 */
@@ -75,40 +75,39 @@
   function musubi(cfg, host, opts, resolve) {
     var left = cfg.left || [], rightItems = shuffle(cfg.right || [], 'm' + opts.seed), pairs = cfg.pairs || {};
     var link = {}, sel = null, tries = 0, locked = false, firstOk = false;
-    function ownerOf(rid) { return Object.keys(link).filter(function (l) { return link[l] === rid; })[0]; }
+    function ownerOf(rid) { return Object.keys(link).find(function (l) { return link[l] === rid; }); }
+    function badge(number, wrong) {
+      return number ? '<i class="gj-ms-n">' + number + '</i>' +
+        (wrong ? '<span class="gj-ms-wrong" aria-label="組み合わせが違います">×</span>' : '') : '<i class="gj-ms-n empty" aria-hidden="true"></i>';
+    }
     function draw(msg, final) {
-      var n = 0, num = {};
-      left.forEach(function (l) { if (link[l.id]) num[l.id] = ++n; });
+      var active = host.ownerDocument.activeElement;
+      var action = host.contains(active) ? active.getAttribute('data-g') : null, id = action && active.getAttribute('data-id');
+      var num = {};
+      left.forEach(function (l, i) { num[l.id] = i + 1; });
+      var n = Object.keys(link).length;
       var bad = {};
       if (msg === 'retry') left.forEach(function (l) { if (link[l.id] !== pairs[l.id]) bad[l.id] = 1; });
       host.innerHTML = '<div class="gj-game gj-musubi"><div class="gj-ask-h"><span class="gj-tag game">結ぶ</span><span class="gj-ask-q">' + rich(cfg.q) + '</span></div>' +
-        '<div class="gj-ms-grid"><svg class="gj-ms-lines" aria-hidden="true"></svg><div class="gj-ms-col">' + left.map(function (l) {
-          return '<button type="button" class="gj-ms-item L' + (sel === l.id ? ' sel' : '') + (link[l.id] ? ' linked' : '') + (bad[l.id] ? ' ng' : '') + '" data-g="left" data-id="' + G.esc(l.id) + '"' + (locked ? ' disabled' : '') + '>' +
-            '<span>' + rich(l.x) + '</span>' + (num[l.id] ? '<i class="gj-ms-n">' + num[l.id] + '</i>' : '<i class="gj-ms-n empty"></i>') + '</button>';
+        (!final ? '<p class="gj-ms-status" role="status">' + (sel ? '組にする右の札を選んでください。' :
+          n === left.length ? '組み替えるには、左の札から選び直してください。' : '左の札を選び、次に右の札を押してください。') + '</p>' : '') +
+        '<div class="gj-ms-grid"><div class="gj-ms-col">' + left.map(function (l) {
+          return '<button type="button" class="gj-ms-item L' + (sel === l.id ? ' sel' : '') + (link[l.id] ? ' linked' : '') + (bad[l.id] ? ' ng' : '') + '" data-g="left" data-id="' + G.esc(l.id) + '" aria-pressed="' + (sel === l.id) + '"' + (locked ? ' disabled' : '') + '>' +
+            '<span>' + rich(l.x) + '</span>' + badge(link[l.id] && num[l.id], bad[l.id]) + '</button>';
         }).join('') + '</div><div class="gj-ms-col">' + rightItems.map(function (r) {
           var o = ownerOf(r.id);
           return '<button type="button" class="gj-ms-item R' + (o ? ' linked' : '') + (o && bad[o] ? ' ng' : '') + '" data-g="right" data-id="' + G.esc(r.id) + '"' + (locked ? ' disabled' : '') + '>' +
-            (o ? '<i class="gj-ms-n">' + num[o] + '</i>' : '<i class="gj-ms-n empty"></i>') + '<span>' + rich(r.x) + '</span></button>';
+            badge(o && num[o], o && bad[o]) + '<span>' + rich(r.x) + '</span></button>';
         }).join('') + '</div></div>' +
         (final ? resultHTML(final.ok, cfg.exp, '正しく結び直しました') :
-          (msg === 'retry' ? '<div class="gj-fb retry" role="status"><div class="gj-fb-h">もう一度、結び直そう</div><p>赤い札の組み合わせがちがいます。</p></div>' : '') +
-          '<div class="gj-nav"><span class="gj-keyhint">左の札 → 右の札の順にタップして結ぶ</span><button type="button" class="gj-btn gold" data-g="check"' + (n < left.length ? ' disabled' : '') + '>確かめる</button></div>') + '</div>';
-      lines();
-    }
-    // 結んだ札の間に線を引く（位置が取れない環境では番号だけで分かる）
-    function lines() {
-      var svg = host.querySelector('.gj-ms-lines'), grid = host.querySelector('.gj-ms-grid');
-      if (!svg || !grid || !grid.getBoundingClientRect) return;
-      var gr = grid.getBoundingClientRect(), k = '';
-      if (!gr.width) return;
-      svg.setAttribute('viewBox', '0 0 ' + gr.width + ' ' + gr.height);
-      Object.keys(link).forEach(function (l) {
-        var a = host.querySelector('.gj-ms-item.L[data-id="' + l + '"]'), b = host.querySelector('.gj-ms-item.R[data-id="' + link[l] + '"]');
-        if (!a || !b) return;
-        var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
-        k += '<line x1="' + (ra.right - gr.left) + '" y1="' + (ra.top + ra.height / 2 - gr.top) + '" x2="' + (rb.left - gr.left) + '" y2="' + (rb.top + rb.height / 2 - gr.top) + '"/>';
-      });
-      svg.innerHTML = k;
+          (msg === 'retry' ? '<div class="gj-fb retry" role="status"><div class="gj-fb-h">もう一度、結び直そう</div><p>×の付いた組を確かめてください。</p></div>' : '') +
+          '<div class="gj-nav"><span class="gj-ms-key">同じ番号が一組</span><button type="button" class="gj-btn gold" data-g="check"' + (n < left.length ? ' disabled' : '') + '>確かめる</button></div>') + '</div>';
+      if (action) {
+        var next = final ? host.querySelector('[data-g="done"]') : Array.prototype.find.call(host.querySelectorAll('[data-g]:enabled'), function (b) {
+          return b.getAttribute('data-g') === action && b.getAttribute('data-id') === id;
+        });
+        if (next) next.focus({ preventScroll: true });
+      }
     }
     host.onclick = function (e) {
       var b = e.target.closest ? e.target.closest('[data-g]') : null; if (!b || b.disabled) return;
@@ -116,16 +115,15 @@
       if (a === 'done') { host.onclick = null; return resolve({ ok: firstOk, tries: tries }); }
       if (locked) return;
       if (a === 'left') {
-        if (link[id]) { delete link[id]; sel = id; } else sel = sel === id ? null : id;   // 結んだ札をもう一度押すとほどく
+        if (sel === id) return;
+        sel = id;
         draw();
       } else if (a === 'right') {
+        if (!sel) return;
         var o = ownerOf(id);
-        if (!sel) { if (o) { delete link[o]; draw(); } return; }
         if (o) delete link[o];
-        link[sel] = id; sel = null;
-        // 次の、まだ結んでいない左の札を選んでおく（タップの回数を減らす）
-        var rest = left.filter(function (l) { return !link[l.id]; })[0];
-        sel = rest ? rest.id : null;
+        link[sel] = id;
+        sel = null;
         draw();
       } else if (a === 'check') {
         tries++;
@@ -137,7 +135,6 @@
         draw(null, { ok: ok });
       }
     };
-    sel = left[0] ? left[0].id : null;
     draw();
   }
 

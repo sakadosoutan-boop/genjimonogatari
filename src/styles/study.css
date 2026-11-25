@@ -117,11 +117,13 @@
 .gj-nb-mv:disabled { opacity: .3; }
 
 /* ---------- 結ぶ ---------- */
-.gj-ms-grid { position: relative; display: grid; grid-template-columns: 1fr 1fr; column-gap: clamp(28px, 9vw, 90px); margin-top: 6px; }
+.gj-ms-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
 .gj-ms-col { display: grid; gap: 8px; align-content: start; }
-.gj-ms-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.gj-ms-lines line { stroke: var(--gj-murasaki); stroke-width: 2.5; stroke-linecap: round; }
+.gj-ms-status, .gj-ms-key { color: var(--gj-usuzumi); font-size: .85em; }
+.gj-ms-status { margin: 6px 0; }
+.gj-ms-wrong { flex: none; color: var(--gj-suou); font-weight: 700; }
 .gj-ms-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 48px; padding: 4px 10px; border: 1px solid var(--gj-line); border-radius: 6px; background: rgba(255, 255, 255, .65); text-align: left; line-height: 1.4; }
+.gj-ms-item > span { overflow-wrap: anywhere; }
 .gj-ms-item.sel { border-color: var(--gj-murasaki); background: var(--gj-usuyo); box-shadow: 0 0 0 2px var(--gj-murasaki); }
 .gj-ms-item.linked { border-color: var(--gj-fuji); }
 .gj-ms-item.ng { border-color: var(--gj-suou); background: rgba(142, 53, 72, .1); }
