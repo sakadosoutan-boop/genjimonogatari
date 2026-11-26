@@ -5,7 +5,7 @@
 
 - ビルド不要。`index.html` を開けば動く（`file://` でも）。素の JS（ES5 寄り・IIFE・`window.GENJI`）、外部 CDN なし。
 - 端末は生徒 1 人 1 台（Chromebook / iPad / Windows）＋スマホ。**スマホ縦持ちで全部遊べること**が必須。
-- 軽さが設計目標：初回読み込み合計 **3MB 以下**（three.min.js 約 600KB を含む）。画像・外部モデルは使わず、3D は手続き生成。
+- 軽さが設計目標：Web 版の表紙（音は初期設定の「切」）の初回読み込み合計 **3MB 以下**。画像・外部モデルは使わず、3D は手続き生成。
 - 参考にする既存作：`/home/user/sakadosoutan-boop/-koumonnokai-`（鴻門の会。物語エンジン・授業モード・原文帳・人形の作り方）、
   `/home/user/-3D-`（寝殿造り 3D。建築部品・御簾・几帳・季節と時刻）。**-3D- の本体 HTML は 5MB あるので全文 Read 禁止**。
   `docs/handbook/PROJECT_MAP.md` の検索アンカーで位置を特定し、Grep と部分 Read で読む。
@@ -19,8 +19,9 @@
 | `src/data/stage-spec.js` | 舞台・立ち位置・姿勢・効果などの語彙（データが使ってよい名前の一覧） |
 | `src/data/bunpo.js` | 文法・敬語・古語の図鑑（共通） |
 | `src/data/kiritsubo.js` / `wakamurasaki.js` | 帖のデータ（物語ノード・原文帳・結末） |
+| `src/js/load-stage3d.js` | 読み始めたときに `index.html` の `data-gj3-src` を依存順に実行する。表紙と絵巻では実行しない |
 | `src/js/stage3d-kit.js` `stage3d-figures.js` `stage3d-hd.js` `stage3d-sets.js` `stage3d-activities.js` `stage3d.js` | 3D 舞台（`GENJI.Stage3D`）。`stage3d-hd.js` は高精細の人物（`GENJI.S3H`） |
-| `src/js/stage3d-hd-assets.js` | 高精細の人物の頭部・手の網目と、女性・子どもの頭の肌の画像（約 5MB・CC0 由来）。`index.html` では読まず、表紙のあとに `stage3d-hd.js` が裏で読む。男の頭・手は `tools/extract-hd-assets.cjs`（鴻門の会から）、女性・子どもの頭は `tools/build-heian-heads.py`（Blender）で作る（手で直さない） |
+| `src/js/stage3d-hd-assets.js` | 高精細の人物の頭部・手の網目と、女性・子どもの頭の肌の画像（約 5MB・CC0 由来）。`index.html` では読まず、3D の舞台を開始したあとに `stage3d-hd.js` が裏で読む。男の頭・手は `tools/extract-hd-assets.cjs`（鴻門の会から）、女性・子どもの頭は `tools/build-heian-heads.py`（Blender）で作る（手で直さない） |
 | `src/js/stage2d.js` | 軽量の「絵巻モード」（`GENJI.Stage2D`。WebGL なしでも動く代役。API は 3D と同じ） |
 | `src/js/games.js` `study.js` `ui.js` `engine.js` | 遊び（並べ・結び）、原文帳・図鑑、画面、物語の進行と保存 |
 | `src/styles/*.css` | `base.css` `ui.css` `study.css`（エンジン側） / `stage3d.css`（3D 側） |
@@ -163,8 +164,8 @@ activity(kind, cfg, cb)         // 3D の遊びを始める。→ { stop() }
 
 - 人物は `GENJI.S3F.make(id, opts)` が作る。`GENJI.S3H.loaded()`（頭部・手のデータが届いた）なら高精細版（`stage3d-hd.js`）、まだなら簡素な人形（`stage3d-figures.js`）。
   どちらも `root / setPose / speak / update / headWorld / dispose` の同じ形。データが届いたら、いまの舞台の人物もその場で差し替える。
-- データは `src/js/stage3d-hd-assets.js`（約 5MB。上限 8MB）。`stage3d-hd.js` が `window.onload` のあとに `<script>` を足して読む（`fetch` を使わないので `file://` でも動く）。
-  設定で絵巻（軽量）を選んでいる人には読まない。一枚 HTML（`dist/index.html`）では `<script type="text/plain" id="gj3-hd-data">` に埋め込み、同じく表紙のあとに実行する。
+- データは `src/js/stage3d-hd-assets.js`（約 5MB。上限 8MB）。3D の舞台を開始したあと、`stage3d-hd.js` が `<script>` を足して読む（`fetch` を使わないので `file://` でも動く）。
+  設定で絵巻（軽量）を選んでいる人には読まない。一枚 HTML（`dist/index.html`）では `<script type="text/plain" id="gj3-hd-data">` に埋め込み、同じタイミングで実行する。配布用 HTML のファイル自体には全素材が入る。
 - 画質：`high` は影・物理ベースの材質・映り込み・木目の凹凸。`low`（エンジンが小さい画面・少ないメモリで選ぶ）でも高精細の人物は使い、顔の細かい網目は寄ったときだけ、影なし・材質は軽いもの。
   `lite`（`setQuality('lite')`、またはメモリ 2GB 以下）は簡素な人形だけ。読み込みに失敗したときも簡素な人形のまま動く。
 - 話し手（`speak(id)`）が変わると、舞台はその人の顔の正面側へ胸から上の構図で寄る（その節が別の人物へ `focus` した直後と、遊びの最中は動かさない）。寄っている間はカメラから弱い補助光を当てる。

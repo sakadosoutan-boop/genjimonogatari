@@ -14,25 +14,26 @@
 <div id="gj-stage" aria-hidden="true"></div>
 <div id="gj-ui"></div>
 <noscript><p style="padding:2em">このページは JavaScript を有効にして開いてください。</p></noscript>
-<!-- 順番を守る：three → 共通 → データ → 3D の舞台 → 絵巻・遊び・帳面・画面 → 進行。欠けたファイルがあっても起動する -->
-<script src="src/vendor/three.min.js"></script>
+<!-- 3D は必要になるまで実行しない。data-gj3-src の順番は依存順（three → 3D の部品 → 舞台）。 -->
+<script type="text/plain" data-gj3-src="src/vendor/three.min.js"></script>
 <script src="src/js/core.js"></script>
 <script src="src/data/chars.js"></script>
 <script src="src/data/stage-spec.js"></script>
 <script src="src/data/bunpo.js"></script>
 <script src="src/data/kiritsubo.js"></script>
 <script src="src/data/wakamurasaki.js"></script>
-<script src="src/js/stage3d-kit.js"></script>
-<script src="src/js/stage3d-figures.js"></script>
-<script src="src/js/stage3d-hd.js"></script>
-<script src="src/js/stage3d-sets.js"></script>
-<script src="src/js/stage3d-activities.js"></script>
-<script src="src/js/stage3d.js"></script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-kit.js"></script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-figures.js"></script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-hd.js"></script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-sets.js"></script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-activities.js"></script>
+<script type="text/plain" data-gj3-src="src/js/stage3d.js"></script>
 <script src="src/js/stage2d.js"></script>
 <script src="src/js/games.js"></script>
 <script src="src/js/study.js"></script>
 <script src="src/js/ui.js"></script>
 <script src="src/js/bgm.js"></script>
+<script src="src/js/load-stage3d.js"></script>
 <script src="src/js/engine.js"></script>
 </body>
 </html>

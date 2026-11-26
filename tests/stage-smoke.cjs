@@ -148,7 +148,10 @@ async function dist(browser) {
   const errors = [];
   p.on('pageerror', (e) => errors.push(e.message));
   await p.goto('file://' + path.join(root, 'dist/index.html'));
-  await p.waitForFunction(() => window.GENJI && window.GENJI.S3H);
+  await p.waitForFunction(() => window.GENJI?.Engine?._mode() === 'title');
+  assert.equal(await p.evaluate(() => typeof window.THREE), 'undefined', 'dist: 表紙では 3D を実行しない');
+  await p.evaluate(() => window.GENJI.Engine.start('kiritsubo'));
+  await p.waitForFunction(() => window.GENJI.Engine.stageName() === '3D');
   const ok = await p.evaluate(() => window.GENJI.S3H.ready());
   assert.ok(ok, 'dist: 埋め込んだデータから読み込める');
   const hd = await p.evaluate(() => { const f = window.GENJI.S3F.make('fujitsubo', { pose: 'sit' }); const r = !!f.hd; f.dispose(); return r; });

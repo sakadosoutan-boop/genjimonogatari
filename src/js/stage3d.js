@@ -84,7 +84,12 @@
     S.cv.addEventListener('webglcontextrestored', function () { S.lost = false; });
     resize();
     S.running = true; S.last = 0; S.raf = root.requestAnimationFrame(frame);
-    if (G.S3H && S.q !== 'lite') { G.S3H.ready(); G.S3H.onReady(hdSwap); }
+    if (G.S3H && S.q !== 'lite') {
+      G.S3H.onReady(hdSwap);
+      root.setTimeout(function () {
+        if (S.el === el && S.q !== 'lite') G.S3H.ready();
+      }, 300);
+    }
     return true;
   }
   function unmount() {

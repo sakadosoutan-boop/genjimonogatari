@@ -911,8 +911,8 @@ html.gj-big .gj-tool { font-size: 15px; }
 <div id="gj-stage" aria-hidden="true"></div>
 <div id="gj-ui"></div>
 <noscript><p style="padding:2em">このページは JavaScript を有効にして開いてください。</p></noscript>
-<!-- 順番を守る：three → 共通 → データ → 3D の舞台 → 絵巻・遊び・帳面・画面 → 進行。欠けたファイルがあっても起動する -->
-<script>
+<!-- 3D は必要になるまで実行しない。data-gj3-src の順番は依存順（three → 3D の部品 → 舞台）。 -->
+<script type="text/plain" data-gj3-src="src/vendor/three.min.js">
 /**
  * @license
  * Copyright 2010-2021 Three.js Authors
@@ -4560,7 +4560,7 @@ html.gj-big .gj-tool { font-size: 15px; }
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
-<script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-kit.js">
 /* 3D 舞台の道具箱 —— 和の色・材質・形・手続きテクスチャ（Canvas）。
  * 外部の画像・モデルは使わない。THREE r128（グローバル）前提。公開: GENJI.S3K
  *   - 材質と基本形は使い回す（_gjShared の印を付け、舞台を替えても捨てない）。
@@ -5072,7 +5072,7 @@ html.gj-big .gj-tool { font-size: 15px; }
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
-<script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-figures.js">
 /* 3D 舞台の人形 —— 引目鉤鼻の簡素な造形。精密な顔は作らない。
  * 女性は床に広がる長い黒髪と、裾を引く袿の重なり（襲の色目を袖口・裾・襟に見せる）。
  * 男性は直衣・束帯・狩衣に冠／烏帽子。尼は尼削ぎ、少女は扇を広げたような肩までの髪。
@@ -5400,12 +5400,12 @@ html.gj-big .gj-tool { font-size: 15px; }
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
-<script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-hd.js">
 /* 3D 舞台の人物（高精細版）—— 解剖学的な頭部・手の網目（CC0）に、平安の装束・髪・化粧を手続きで着せる。
- *   頭部・手のデータ（src/js/stage3d-hd-assets.js、約 4MB）は表紙を出したあとに裏で読み込む（script タグを足す。file:// でも動く）。
- *   届くまで・画質 low・読み込み失敗のときは、stage3d-figures.js の簡素な人形がそのまま使われる。
+ *   頭部・手のデータ（src/js/stage3d-hd-assets.js、約 4MB）は3D の舞台を用意したあとに裏で読み込む（script タグを足す。file:// でも動く）。
+ *   届くまで・画質 lite・読み込み失敗のときは、stage3d-figures.js の簡素な人形がそのまま使われる。
  *   届いたら、いま映っている舞台の人物もその場で差し替える（stage3d.js の hdSwap）。
- * 公開: GENJI.S3H = { loaded(), ready(), want(), make(id, opts), onReady(fn) }
+ * 公開: GENJI.S3H = { loaded(), ready(), make(id, opts), onReady(fn) }
  * 網目の出典：Blender Studio「Human Base Meshes v1.2.0」（CC0）を姉妹作「鴻門の会」（MIT）が整えたもの。
  * 復号の手順は鴻門の会 koumon-heads.js / koumon-hands.js（同じ作者・MIT）にならう。 */
 (function (root) {
@@ -5438,16 +5438,6 @@ html.gj-big .gj-tool { font-size: 15px; }
     }).then(function (ok) { if (ok) fire(); return ok; });
     return pending;
   };
-  /* 絵巻（軽量）を選んでいる人には読み込まない */
-  H.want = function () {
-    try { var m = JSON.parse(root.localStorage.getItem('genji:v1') || '{}'); if (m && m.settings && m.settings.view === '2d') return false; } catch (e) {}
-    return true;
-  };
-  if (doc && root.addEventListener) {
-    var pre = function () { if (H.want()) root.setTimeout(H.ready, 300); };
-    if (doc.readyState === 'complete') pre(); else root.addEventListener('load', pre);
-  }
-
   /* ================= 復号（koumon-heads.js と同じ形式） ================= */
   function bytes(s) {
     var raw = root.atob(s), out = new Uint8Array(raw.length);
@@ -7012,7 +7002,7 @@ html.gj-big .gj-tool { font-size: 15px; }
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
-<script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-sets.js">
 /* 3D 舞台の大道具 —— stage-spec.js の 8 つの舞台と、渡殿を渡る遊びの道。
  * 吹抜屋台：屋根と天井を外し、斜め上から室内を見下ろす。手前側の長押・壁は描かない（奥と左だけ）。
  * 座標：+X が見る人の右、+Z が手前、床が y=0、地面は y=-FH。1 間＝KEN。
@@ -7617,7 +7607,7 @@ html.gj-big .gj-tool { font-size: 15px; }
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
-<script>
+<script type="text/plain" data-gj3-src="src/js/stage3d-activities.js">
 /* 3D の遊び —— 渡殿を渡る（wataru）と垣間見（kaimami）。window.GENJI.S3A[kind](ctx, act, cfg, cb, finish)
  * stage3d.js の activity() から呼ばれる。act.frame(dt, t) を置くと、その間のカメラはここが動かす。
  * 操作のボタンは ctx.S.ui（文字の窓より上の領域）の中に gj3- クラスで作る。 */
@@ -7848,7 +7838,7 @@ html.gj-big .gj-tool { font-size: 15px; }
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
-<script>
+<script type="text/plain" data-gj3-src="src/js/stage3d.js">
 /* 3D 舞台の本体 —— window.GENJI.Stage3D（API は docs/CONTRACT.md「舞台 API」）。
  * 吹抜屋台の俯瞰を基本に、focus(人物) で低い視点へなめらかに寄る。
  * 文字の窓（画面の下 4 割）に隠れないよう、絵の中心を上 6 割の真ん中へずらして描く。
@@ -7935,7 +7925,12 @@ html.gj-big .gj-tool { font-size: 15px; }
     S.cv.addEventListener('webglcontextrestored', function () { S.lost = false; });
     resize();
     S.running = true; S.last = 0; S.raf = root.requestAnimationFrame(frame);
-    if (G.S3H && S.q !== 'lite') { G.S3H.ready(); G.S3H.onReady(hdSwap); }
+    if (G.S3H && S.q !== 'lite') {
+      G.S3H.onReady(hdSwap);
+      root.setTimeout(function () {
+        if (S.el === el && S.q !== 'lite') G.S3H.ready();
+      }, 300);
+    }
     return true;
   }
   function unmount() {
@@ -10107,6 +10102,52 @@ html.gj-big .gj-tool { font-size: 15px; }
 
 </script>
 <script>
+/* 3D の舞台を最初に使うときだけ、index.html に記した依存順で実行する。 */
+(function (root) {
+  'use strict';
+  var G = root.GENJI, doc = root.document, pending;
+  G.loadStage3D = function () {
+    if (pending) return pending;
+    pending = new Promise(function (resolve, reject) {
+      var sources = doc.querySelectorAll('script[data-gj3-src]'), scripts = [], remaining = sources.length;
+      if (!remaining) return reject(new Error('3D のスクリプトが指定されていません'));
+
+      var timer = root.setTimeout(function () { fail(new Error('3D の読み込みが時間内に終わりませんでした')); }, 5000);
+      function fail(error) {
+        root.clearTimeout(timer);
+        scripts.forEach(function (script) { script.remove(); });
+        reject(error);
+      }
+      function loaded() {
+        if (--remaining) return;
+        root.clearTimeout(timer);
+        if (!G.Stage3D) return fail(new Error('3D の舞台を初期化できませんでした'));
+        resolve();
+      }
+      Array.prototype.forEach.call(sources, function (source) {
+        var script = doc.createElement('script'), path = source.getAttribute('data-gj3-src');
+        if (source.textContent.trim()) {
+          // 配布用の一枚 HTML では、各スクリプトも HTML 内にある。
+          script.text = source.textContent;
+          doc.head.appendChild(script);
+          loaded();
+        } else {
+          // 取得は並行に始め、実行は依存順にそろえる。
+          script.async = false;
+          script.src = path;
+          script.onload = loaded;
+          script.onerror = function () { fail(new Error(path + ' を読み込めませんでした')); };
+          scripts.push(script);
+          doc.head.appendChild(script);
+        }
+      });
+    });
+    return pending;
+  };
+})(window);
+
+</script>
+<script>
 /* 物語の進行（GENJI.Engine）：ノードを順にたどり、状態・保存・学習モードを受け持つ。
  * 画面は GENJI.UI、帳面は GENJI.Study、遊びは GENJI.Games、舞台は GENJI.stage（3D か絵巻）に任せる。
  * 舞台は docs/CONTRACT.md の API だけを呼ぶ。Stage3D が無い・例外を出すときは Stage2D に落として進み続ける。
@@ -10116,6 +10157,7 @@ html.gj-big .gj-tool { font-size: 15px; }
   var G = root.GENJI = root.GENJI || {};
   var KEY = 'genji:v1';
   var SCORED = { read: 1, subject: 1, keigo: 1, kokoro: 1, waka: 1 };   // 読解率に数える問い（judge は数えない）
+  var stage3dFailed = false;
   var UI, meta, st = null, cur = null, mode = 'boot', epoch = 0;
   var IDX = {}, lastScene = null, cardNext = null, pendingSay = null, activity = null, screenNow = null, hops = 0, eraseArmed = false;
 
@@ -10243,7 +10285,10 @@ html.gj-big .gj-tool { font-size: 15px; }
 
   /* ---------- 舞台（3D／絵巻の切り替えと、落ちたときの受け皿） ---------- */
   function can3d() {
-    try { return !!(G.Stage3D && typeof G.Stage3D.mount === 'function' && G.Stage3D.supported && G.Stage3D.supported()); } catch (e) { return false; }
+    if (stage3dFailed) return false;
+    if (!G.Stage3D) return !!(G.loadStage3D && root.WebGLRenderingContext);
+    try { return !!(typeof G.Stage3D.mount === 'function' && G.Stage3D.supported && G.Stage3D.supported()); }
+    catch (e) { return false; }
   }
   function quality() {
     var small = (root.innerWidth || 1024) < 720, mem = root.navigator && root.navigator.deviceMemory;
@@ -10254,21 +10299,40 @@ html.gj-big .gj-tool { font-size: 15px; }
     if (G.stage) { try { G.stage.unmount(); } catch (e) {} }
     host.innerHTML = '';
     G.stage = S;
-    if (S) S.mount(host, { quality: quality() });
+    if (S && S.mount(host, { quality: quality() }) === false) throw new Error('舞台を開始できませんでした');
   }
-  function mountStage() {
-    var want = meta.settings.view !== '2d' && can3d() ? G.Stage3D : G.Stage2D;
+  function mountStage(want) {
+    if (G.stage === want) return false;
     try { useStage(want); }
     catch (e) {
+      if (want === G.Stage3D) stage3dFailed = true;
       warn('舞台を用意できませんでした。絵巻モードに切り替えます。', e);
       try { useStage(want === G.Stage2D ? null : G.Stage2D); } catch (e2) { G.stage = null; }
     }
-    if (G.stage && lastScene) applyScene(lastScene);
+    return true;
+  }
+  function withStage(ready) {
+    var my = epoch;
+    function proceed() {
+      // 表紙に戻った、別の帖を開いた、または遊びに入った場合は舞台を奪わない。
+      if (my !== epoch || activity || !st) return;
+      var wanted = meta.settings.view !== '2d' && G.Stage3D && can3d() ? G.Stage3D : G.Stage2D;
+      ready(mountStage(wanted));
+    }
+    if (meta.settings.view === '2d' || G.Stage3D || !can3d()) return proceed();
+    UI.toast('3D の舞台を準備しています');
+    return G.loadStage3D().catch(function (e) {
+      if (stage3dFailed) return;
+      stage3dFailed = true;
+      warn('3D を読み込めませんでした。絵巻モードで続けます。', e);
+      if (my === epoch && meta.settings.view !== '2d') UI.toast('絵巻モードで続けます');
+    }).then(proceed);
   }
   function warn(msg, e) { if (root.console && root.console.warn) root.console.warn('[GENJI] ' + msg, e && e.message ? e.message : ''); }
   /** 3D が例外を出したら絵巻に落とす。成功したら true。 */
   function fallback(e) {
     if (!G.Stage2D || G.stage === G.Stage2D) return false;
+    stage3dFailed = true;
     warn('3D の舞台でエラーが起きたので、絵巻モードに切り替えます。', e);
     try { useStage(G.Stage2D); if (lastScene) G.Stage2D.setScene(lastScene); } catch (e2) { G.stage = null; return false; }
     if (UI.toast) UI.toast('絵巻モードに切り替えました');
@@ -10327,11 +10391,14 @@ html.gj-big .gj-tool { font-size: 15px; }
     UI.panel(false); UI.cutin(null);
     stg('arrows', null);
     UI.fade(n.fade, function () {
-      applyScene(n).then(function () {
-        if (my !== epoch || !st || st.node !== key) return;
-        if (n.caption) UI.caption(n.caption);
-        if (n.card) { mode = 'card'; cardNext = nextOf(key); UI.card(n.card); }
-        else go(nextOf(key));
+      if (my !== epoch || !st || st.node !== key) return;
+      withStage(function () {
+        applyScene(n).then(function () {
+          if (my !== epoch || !st || st.node !== key) return;
+          if (n.caption) UI.caption(n.caption);
+          if (n.card) { mode = 'card'; cardNext = nextOf(key); UI.card(n.card); }
+          else go(nextOf(key));
+        });
       });
     });
   }
@@ -10590,12 +10657,15 @@ html.gj-big .gj-tool { font-size: 15px; }
     meta.last = st.ch;
     UI.hideScreen(); UI.closeModal();
     UI.meters(meterList(), classroom());
-    if (!G.stage) mountStage();
-    var ix = index(st.ch), at = ix.keys.indexOf(st.node), sc = null, my = epoch;
-    // 途中から始めるときは、その前の場面をまず舞台に組む
-    for (var i = at; i >= 0 && !sc; i--) if (ix.map[ix.keys[i]].n.t === 'scene') sc = ix.map[ix.keys[i]].n;
-    if (sc && ix.map[st.node].n !== sc) { mode = 'scene'; return applyScene(sc).then(function () { if (my === epoch && st) go(st.node, resuming); }); }
-    go(st.node, resuming);
+    mode = 'scene';
+    UI.panel(false);
+    return withStage(function () {
+      var ix = index(st.ch), at = ix.keys.indexOf(st.node), sc = null, my = epoch;
+      // 途中から始めるときは、その前の場面をまず舞台に組む
+      for (var i = at; i >= 0 && !sc; i--) if (ix.map[ix.keys[i]].n.t === 'scene') sc = ix.map[ix.keys[i]].n;
+      if (sc && ix.map[st.node].n !== sc) return applyScene(sc).then(function () { if (my === epoch && st) go(st.node, resuming); });
+      go(st.node, resuming);
+    });
   }
   function start(chId, actId) {
     var ix = index(chId);
@@ -10637,8 +10707,12 @@ html.gj-big .gj-tool { font-size: 15px; }
   }
   function setView(v) {
     meta.settings.view = v === '2d' ? '2d' : '3d';
-    mountStage();
     refresh();
+    // 進行中の遊びは、その舞台で最後まで続ける。
+    if (st && lastScene && mode !== 'scene' && mode !== 'end' && !activity) withStage(function (changed) {
+      if (changed) applyScene(lastScene);
+      if (UI.modalId() === 'settings') refresh();
+    });
   }
   var ACT = {
     advance: advance, next: advance, card: advance,
@@ -10699,7 +10773,7 @@ html.gj-big .gj-tool { font-size: 15px; }
     UI.init(handle);
     loadMeta();
     UI.applySettings(meta.settings);
-    mountStage();
+    mountStage(G.Stage2D);
     root.addEventListener('resize', function () { stg('resize'); });
     root.addEventListener('pagehide', function () { if (st && mode !== 'end') persist(); });
     if (!fromHash()) showTitle();

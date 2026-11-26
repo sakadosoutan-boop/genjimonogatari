@@ -1,8 +1,8 @@
 /* 3D 舞台の人物（高精細版）—— 解剖学的な頭部・手の網目（CC0）に、平安の装束・髪・化粧を手続きで着せる。
- *   頭部・手のデータ（src/js/stage3d-hd-assets.js、約 4MB）は表紙を出したあとに裏で読み込む（script タグを足す。file:// でも動く）。
- *   届くまで・画質 low・読み込み失敗のときは、stage3d-figures.js の簡素な人形がそのまま使われる。
+ *   頭部・手のデータ（src/js/stage3d-hd-assets.js、約 4MB）は3D の舞台を用意したあとに裏で読み込む（script タグを足す。file:// でも動く）。
+ *   届くまで・画質 lite・読み込み失敗のときは、stage3d-figures.js の簡素な人形がそのまま使われる。
  *   届いたら、いま映っている舞台の人物もその場で差し替える（stage3d.js の hdSwap）。
- * 公開: GENJI.S3H = { loaded(), ready(), want(), make(id, opts), onReady(fn) }
+ * 公開: GENJI.S3H = { loaded(), ready(), make(id, opts), onReady(fn) }
  * 網目の出典：Blender Studio「Human Base Meshes v1.2.0」（CC0）を姉妹作「鴻門の会」（MIT）が整えたもの。
  * 復号の手順は鴻門の会 koumon-heads.js / koumon-hands.js（同じ作者・MIT）にならう。 */
 (function (root) {
@@ -35,16 +35,6 @@
     }).then(function (ok) { if (ok) fire(); return ok; });
     return pending;
   };
-  /* 絵巻（軽量）を選んでいる人には読み込まない */
-  H.want = function () {
-    try { var m = JSON.parse(root.localStorage.getItem('genji:v1') || '{}'); if (m && m.settings && m.settings.view === '2d') return false; } catch (e) {}
-    return true;
-  };
-  if (doc && root.addEventListener) {
-    var pre = function () { if (H.want()) root.setTimeout(H.ready, 300); };
-    if (doc.readyState === 'complete') pre(); else root.addEventListener('load', pre);
-  }
-
   /* ================= 復号（koumon-heads.js と同じ形式） ================= */
   function bytes(s) {
     var raw = root.atob(s), out = new Uint8Array(raw.length);
