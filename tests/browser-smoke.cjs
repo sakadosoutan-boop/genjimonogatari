@@ -14,7 +14,8 @@ async function open(browser, viewport, view) {
   const p = await browser.newPage({ viewport, hasTouch: viewport.width < 600, isMobile: viewport.width < 600 });
   // 3D は CI（GPU なしのソフトウェア描画）で 1 コマ数秒かかる。押す操作の待ちを長めにとる（実機の速さとは別）
   if (view === '3d') p.setDefaultTimeout(120000);
-  const errors = [];
+  const errors = [], deferred = [];
+  p.on('request', (r) => { if (/three\.min\.js|\/js\/stage3d[^/]*\.js|title-bgm\.b64/.test(r.url())) deferred.push(r.url()); });
   p.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   // 別の担当が作成中のファイルが無いときの「読み込めない」は数えない（それでも起動することを見る）
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|ERR_FILE_NOT_FOUND/.test(m.text())) errors.push('console: ' + m.text()); });
@@ -26,7 +27,7 @@ async function open(browser, viewport, view) {
   const real = await p.evaluate(() => window.GENJI.chapterOrder.slice());
   await p.addScriptTag({ path: FIXTURE });
   await p.evaluate(() => window.GENJI.Engine.title());
-  return { p, errors, real };
+  return { p, errors, real, deferred };
 }
 
 /** 一手進める：札 → 次へ → 選択肢 → 遊び、の順に押せるものを押す。 */
@@ -63,11 +64,12 @@ async function play(p, until, guard = 700) {
 const rect = (p, s) => p.$eval(s, (e) => { const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, h: r.height, w: r.width }; });
 
 async function story(browser, name, viewport, view) {
-  const { p, errors, real } = await open(browser, viewport, view);
+  const { p, errors, real, deferred } = await open(browser, viewport, view);
   const phone = viewport.width < 600;
   assert.ok(await p.isVisible('.gj-title h1'), name + ': 表紙が出る');
   assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, name + ': 表紙が横にはみ出さない');
-  const stageKind = await p.evaluate(() => window.GENJI.Engine.stageName());
+  assert.equal(await p.evaluate(() => typeof window.THREE), 'undefined', name + ': 表紙では 3D を実行しない');
+  assert.deepEqual(deferred, [], name + ': 表紙では 3D と BGM を取得しない');
   const check = async (label) => {
     // 文字の窓は画面内。スマホでは下 4 割以内。ボタンは 44px 以上
     if (!(await p.isVisible('.gj-panel'))) return;
@@ -83,6 +85,7 @@ async function story(browser, name, viewport, view) {
     await p.click('.gj-chap[data-ch="' + id + '"]');
     assert.ok(await p.isVisible('.gj-acts'), name + ': ' + id + ' の目次');
     await p.click('[data-gj="start"]');
+    await p.waitForFunction(() => !['title', 'scene'].includes(window.GENJI.Engine._mode()));
     let seen = 0;
     for (let i = 0; i < 14; i++) {
       await p.evaluate(STEP); await p.waitForTimeout(60);
@@ -100,6 +103,8 @@ async function story(browser, name, viewport, view) {
   await p.click('[data-gj="start"]');
   await play(p, () => window.GENJI.Engine._mode() === 'say');
   await check('台詞');
+  const stageKind = await p.evaluate(() => window.GENJI.Engine.stageName());
+  if (view === '2d') assert.deepEqual(deferred, [], name + ': 絵巻では 3D を取得しない');
   if (!phone) { await p.keyboard.press('Enter'); }
   // 文字を隠す → 戻す
   await p.click('[data-gj="hide"]');

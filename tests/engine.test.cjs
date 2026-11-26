@@ -184,3 +184,39 @@ test('結末：学習記録（コピー用の文）に読解率・読み・ふ�
   assert.match(t, /ふり返り/);
   assert.ok(w.document.querySelector('.gj-end [data-gj="copy"]') && w.document.querySelector('.gj-end [data-gj="print"]'));
 });
+
+test('3D：表紙では読み込まず、開始後に失敗した場合は絵巻で続ける', async () => {
+  const w = boot({ v: 1, settings: { view: '3d', instant: true }, ch: {} }), G = w.GENJI, E = G.Engine;
+  w.WebGLRenderingContext = function () {};
+  let loads = 0, fail;
+  G.loadStage3D = () => { loads++; return new Promise((resolve, reject) => { fail = reject; }); };
+  w.console.warn = () => {};
+  assert.equal(loads, 0);
+  assert.equal(E.stageName(), '絵巻（軽量）');
+  E.start('kiritsubo');
+  assert.equal(loads, 1);
+  fail(new Error('読み込み失敗'));
+  for (let i = 0; i < 1000 && E._mode() === 'scene'; i++) await tick(1);
+  assert.notEqual(E._mode(), 'scene');
+  assert.equal(E.stageName(), '絵巻（軽量）');
+  E.start('wakamurasaki');
+  assert.equal(loads, 1, '失敗したセッションでは絵巻で始める');
+  w.close();
+});
+
+test('3D：読み込み中に表紙へ戻ると遅れて舞台を入れ替えない', async () => {
+  const w = boot({ v: 1, settings: { view: '3d', instant: true }, ch: {} }), G = w.GENJI, E = G.Engine;
+  w.WebGLRenderingContext = function () {};
+  let finish, mounts = 0;
+  G.loadStage3D = () => new Promise((resolve) => { finish = resolve; });
+  E.start('kiritsubo');
+  E.title();
+  G.Stage3D = { supported: () => true, mount: () => { mounts++; } };
+  finish();
+  await tick();
+  assert.equal(E._mode(), 'title');
+  assert.equal(mounts, 0);
+  E.start('wakamurasaki');
+  assert.equal(mounts, 1);
+  w.close();
+});

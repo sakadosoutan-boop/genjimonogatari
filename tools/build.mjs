@@ -7,12 +7,16 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p.split(/[?#]/)[0]), 'utf8');
 let html = read('index.html');
-const wantsHD = html.includes('src/js/stage3d-hd.js');
+const wantsHD = html.includes('data-gj3-src="src/js/stage3d-hd.js"');
+const scriptText = (s) => read(s).replace(/<\/script/gi, '<\\/script');
 html = html.replace(/<link rel="stylesheet" href="([^"]+)">/g, (_, href) => '<style>\n' + read(href) + '\n</style>');
 // </script> が中に現れても壊れないようにする
-html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, s) => '<script>\n' + read(s).replace(/<\/script/gi, '<\\/script') + '\n</script>');
+html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, s) => '<script>\n' + scriptText(s) + '\n</script>');
+// 一枚 HTML でも、3D のスクリプトは必要になってから実行する。
+html = html.replace(/<script type="text\/plain" data-gj3-src="([^"]+)"><\/script>/g,
+  (_, s) => '<script type="text/plain" data-gj3-src="' + s + '">\n' + scriptText(s) + '\n</script>');
 // 3D の高精細な人物のデータ（頭部・手の網目、約 4MB）は、すぐには実行しない形で末尾に埋め込む。
-// stage3d-hd.js が表紙を出したあとに、この中身を実行して使う（読み込み中も表紙はすぐ出る）。
+// 3D の舞台を用意したあとに、stage3d-hd.js がこの中身を実行する。
 const HD = 'src/js/stage3d-hd-assets.js';
 if (wantsHD && fs.existsSync(path.join(root, HD))) {
   const at = html.lastIndexOf('</body>');

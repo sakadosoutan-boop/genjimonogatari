@@ -7,6 +7,7 @@
   var G = root.GENJI = root.GENJI || {};
   var KEY = 'genji:v1';
   var SCORED = { read: 1, subject: 1, keigo: 1, kokoro: 1, waka: 1 };   // 読解率に数える問い（judge は数えない）
+  var stage3dFailed = false;
   var UI, meta, st = null, cur = null, mode = 'boot', epoch = 0;
   var IDX = {}, lastScene = null, cardNext = null, pendingSay = null, activity = null, screenNow = null, hops = 0, eraseArmed = false;
 
@@ -134,7 +135,10 @@
 
   /* ---------- 舞台（3D／絵巻の切り替えと、落ちたときの受け皿） ---------- */
   function can3d() {
-    try { return !!(G.Stage3D && typeof G.Stage3D.mount === 'function' && G.Stage3D.supported && G.Stage3D.supported()); } catch (e) { return false; }
+    if (stage3dFailed) return false;
+    if (!G.Stage3D) return !!(G.loadStage3D && root.WebGLRenderingContext);
+    try { return !!(typeof G.Stage3D.mount === 'function' && G.Stage3D.supported && G.Stage3D.supported()); }
+    catch (e) { return false; }
   }
   function quality() {
     var small = (root.innerWidth || 1024) < 720, mem = root.navigator && root.navigator.deviceMemory;
@@ -145,21 +149,40 @@
     if (G.stage) { try { G.stage.unmount(); } catch (e) {} }
     host.innerHTML = '';
     G.stage = S;
-    if (S) S.mount(host, { quality: quality() });
+    if (S && S.mount(host, { quality: quality() }) === false) throw new Error('舞台を開始できませんでした');
   }
-  function mountStage() {
-    var want = meta.settings.view !== '2d' && can3d() ? G.Stage3D : G.Stage2D;
+  function mountStage(want) {
+    if (G.stage === want) return false;
     try { useStage(want); }
     catch (e) {
+      if (want === G.Stage3D) stage3dFailed = true;
       warn('舞台を用意できませんでした。絵巻モードに切り替えます。', e);
       try { useStage(want === G.Stage2D ? null : G.Stage2D); } catch (e2) { G.stage = null; }
     }
-    if (G.stage && lastScene) applyScene(lastScene);
+    return true;
+  }
+  function withStage(ready) {
+    var my = epoch;
+    function proceed() {
+      // 表紙に戻った、別の帖を開いた、または遊びに入った場合は舞台を奪わない。
+      if (my !== epoch || activity || !st) return;
+      var wanted = meta.settings.view !== '2d' && G.Stage3D && can3d() ? G.Stage3D : G.Stage2D;
+      ready(mountStage(wanted));
+    }
+    if (meta.settings.view === '2d' || G.Stage3D || !can3d()) return proceed();
+    UI.toast('3D の舞台を準備しています');
+    return G.loadStage3D().catch(function (e) {
+      if (stage3dFailed) return;
+      stage3dFailed = true;
+      warn('3D を読み込めませんでした。絵巻モードで続けます。', e);
+      if (my === epoch && meta.settings.view !== '2d') UI.toast('絵巻モードで続けます');
+    }).then(proceed);
   }
   function warn(msg, e) { if (root.console && root.console.warn) root.console.warn('[GENJI] ' + msg, e && e.message ? e.message : ''); }
   /** 3D が例外を出したら絵巻に落とす。成功したら true。 */
   function fallback(e) {
     if (!G.Stage2D || G.stage === G.Stage2D) return false;
+    stage3dFailed = true;
     warn('3D の舞台でエラーが起きたので、絵巻モードに切り替えます。', e);
     try { useStage(G.Stage2D); if (lastScene) G.Stage2D.setScene(lastScene); } catch (e2) { G.stage = null; return false; }
     if (UI.toast) UI.toast('絵巻モードに切り替えました');
@@ -218,11 +241,14 @@
     UI.panel(false); UI.cutin(null);
     stg('arrows', null);
     UI.fade(n.fade, function () {
-      applyScene(n).then(function () {
-        if (my !== epoch || !st || st.node !== key) return;
-        if (n.caption) UI.caption(n.caption);
-        if (n.card) { mode = 'card'; cardNext = nextOf(key); UI.card(n.card); }
-        else go(nextOf(key));
+      if (my !== epoch || !st || st.node !== key) return;
+      withStage(function () {
+        applyScene(n).then(function () {
+          if (my !== epoch || !st || st.node !== key) return;
+          if (n.caption) UI.caption(n.caption);
+          if (n.card) { mode = 'card'; cardNext = nextOf(key); UI.card(n.card); }
+          else go(nextOf(key));
+        });
       });
     });
   }
@@ -481,12 +507,15 @@
     meta.last = st.ch;
     UI.hideScreen(); UI.closeModal();
     UI.meters(meterList(), classroom());
-    if (!G.stage) mountStage();
-    var ix = index(st.ch), at = ix.keys.indexOf(st.node), sc = null, my = epoch;
-    // 途中から始めるときは、その前の場面をまず舞台に組む
-    for (var i = at; i >= 0 && !sc; i--) if (ix.map[ix.keys[i]].n.t === 'scene') sc = ix.map[ix.keys[i]].n;
-    if (sc && ix.map[st.node].n !== sc) { mode = 'scene'; return applyScene(sc).then(function () { if (my === epoch && st) go(st.node, resuming); }); }
-    go(st.node, resuming);
+    mode = 'scene';
+    UI.panel(false);
+    return withStage(function () {
+      var ix = index(st.ch), at = ix.keys.indexOf(st.node), sc = null, my = epoch;
+      // 途中から始めるときは、その前の場面をまず舞台に組む
+      for (var i = at; i >= 0 && !sc; i--) if (ix.map[ix.keys[i]].n.t === 'scene') sc = ix.map[ix.keys[i]].n;
+      if (sc && ix.map[st.node].n !== sc) return applyScene(sc).then(function () { if (my === epoch && st) go(st.node, resuming); });
+      go(st.node, resuming);
+    });
   }
   function start(chId, actId) {
     var ix = index(chId);
@@ -528,8 +557,12 @@
   }
   function setView(v) {
     meta.settings.view = v === '2d' ? '2d' : '3d';
-    mountStage();
     refresh();
+    // 進行中の遊びは、その舞台で最後まで続ける。
+    if (st && lastScene && mode !== 'scene' && mode !== 'end' && !activity) withStage(function (changed) {
+      if (changed) applyScene(lastScene);
+      if (UI.modalId() === 'settings') refresh();
+    });
   }
   var ACT = {
     advance: advance, next: advance, card: advance,
@@ -590,7 +623,7 @@
     UI.init(handle);
     loadMeta();
     UI.applySettings(meta.settings);
-    mountStage();
+    mountStage(G.Stage2D);
     root.addEventListener('resize', function () { stg('resize'); });
     root.addEventListener('pagehide', function () { if (st && mode !== 'end') persist(); });
     if (!fromHash()) showTitle();
