@@ -269,29 +269,41 @@
     var id = w === 'you' && povId ? povId : w, c = charOf(id), me = w === 'you' || (povId && w === povId);
     return '<div class="gj-who" style="--c:' + esc(colorOf(id)) + '">' + (G.Study ? G.Study.sealHTML(id) : '') + '<b>' + esc(c.name) + '</b>' + (me ? '<small class="gj-you">あなた</small>' : '') + (extra || '') + '</div>';
   }
-  function stopTyping() { if (typing) { clearTimeout(typing.id); typing = null; } }
+  function stopTyping() {
+    if (!typing) return;
+    clearTimeout(typing.id);
+    typing.caret.remove();
+    typing.node.classList.remove('gj-typing');
+    typing = null;
+  }
   function cue() { var n = el.body.querySelector('.gj-text'); if (n && !n.querySelector('.gj-cue')) n.insertAdjacentHTML('beforeend', '<i class="gj-cue" aria-hidden="true">▼</i>'); el.panel.classList.add('gj-typed'); }
-  /** 文字送りの途中なら全文を出して true を返す。 */
+  /** 文字送りの途中なら、残りの単位だけを足して true を返す。 */
   function finishTyping() {
     if (!typing) return false;
-    var t = typing; stopTyping();
-    t.node.innerHTML = t.html;
+    var t = typing;
+    if (t.at < t.units.length) t.node.insertAdjacentHTML('beforeend', G.Study.unitsHTML(t.units.slice(t.at)));
+    stopTyping();
     cue(); checkMore();
     return true;
   }
-  function typeUnits(node, us, html) {
-    var i = 0;
+  function typeUnits(node, units) {
+    var caret = document.createElement('span');
+    caret.className = 'gj-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    var t = typing = { node: node, caret: caret, units: units, at: 0, id: null };
     node.classList.add('gj-typing');
     function tick() {
-      if (!typing) return;
-      i++;
-      node.innerHTML = G.Study.unitsHTML(us, i) + '<span class="gj-caret" aria-hidden="true"></span>';
-      if (i >= us.length) { stopTyping(); node.innerHTML = html; node.classList.remove('gj-typing'); cue(); checkMore(); return; }
-      var u = us[i - 1], wait = TYPE.base + (TYPE.pause[u.b] || 0) + (u.r ? 20 : 0);
-      if (node.scrollHeight > 0 && i % 12 === 0) checkMore();
-      typing.id = setTimeout(tick, wait);
+      if (typing !== t) return;
+      if (!caret.parentNode) node.appendChild(caret);
+      var u = units[t.at++];
+      // 表示済みの文字やルビを残し、カーソルの前に今回の単位だけを入れる。
+      caret.insertAdjacentHTML('beforebegin', G.Study.unitHTML(u));
+      if (t.at === units.length) { finishTyping(); return; }
+      if (t.at % 12 === 0) checkMore();
+      var wait = TYPE.base + (TYPE.pause[u.b] || 0) + (u.r ? 20 : 0);
+      t.id = setTimeout(tick, wait);
     }
-    typing = { node: node, units: us, html: html, id: setTimeout(tick, 60) };
+    t.id = setTimeout(tick, 60);
   }
   /** 和歌を上の句・下の句の二行に組む。文の中の「…」から歌を探し、拍の見積もりで分ける。 */
   function wakaSplit(x) {
@@ -330,9 +342,9 @@
       cue(); checkMore(); focusNext();
       return;
     }
-    var us = G.Study.units(m.x), html = G.Study.unitsHTML(us);
-    if (m.instant || reduced() || us.length < 3) { node.innerHTML = html; cue(); checkMore(); }
-    else typeUnits(node, us, html);
+    var us = G.Study.units(m.x);
+    if (m.instant || reduced() || us.length < 3) { node.innerHTML = G.Study.unitsHTML(us); cue(); checkMore(); }
+    else typeUnits(node, us);
     focusNext();
   }
   function gen(ch, g) {

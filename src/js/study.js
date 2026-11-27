@@ -27,12 +27,12 @@
     var out = [], mark = false, m;
     s = String(s == null ? '' : s);
     for (var i = 0; i < s.length;) {
-      var c = s.charAt(i);
+      var c = String.fromCodePoint(s.codePointAt(i));
       if (c === '{' && (m = /^\{([^|{}]+)\|([^|{}]+)\}/.exec(s.slice(i)))) { out.push({ b: m[1], r: m[2], m: mark }); i += m[0].length; continue; }
       if (c === '【') { mark = true; i++; continue; }
       if (c === '】') { mark = false; i++; continue; }
       out.push(c === '\n' ? { nl: true, b: '' } : { b: c, m: mark });
-      i++;
+      i += c.length;
     }
     return out;
   }
@@ -269,7 +269,7 @@
   }
 
   G.Study = {
-    state: St, units: units, unitsHTML: unitsHTML, findRange: findRange,
+    state: St, units: units, unitHTML: unitHTML, unitsHTML: unitsHTML, findRange: findRange,
     sealHTML: sealHTML, plate: plate, arrowHTML: arrowHTML, keigoName: KEIGO,
     genHTML: genHTML, findGen: findGen, openBook: openBook, openZukan: openZukan, openChars: openChars, castOf: castOf, handle: handle
   };
