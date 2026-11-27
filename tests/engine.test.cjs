@@ -184,3 +184,52 @@ test('結末：学習記録（コピー用の文）に読解率・読み・ふ�
   assert.match(t, /ふり返り/);
   assert.ok(w.document.querySelector('.gj-end [data-gj="copy"]') && w.document.querySelector('.gj-end [data-gj="print"]'));
 });
+
+test('文字送り：表示済みのルビとカーソルを残し、途中と最後で全文表示と一致する', () => {
+  const w = boot(), G = w.GENJI, d = w.document;
+  const pending = new Map();
+  let serial = 0;
+  w.setTimeout = (fn, ms) => { pending.set(++serial, { fn, ms }); return serial; };
+  w.clearTimeout = (id) => { pending.delete(id); };
+  function stepTimer(delay) {
+    const [id, task] = pending.entries().next().value;
+    assert.equal(task.ms, delay);
+    pending.delete(id);
+    task.fn();
+  }
+
+  const x = '【{御時|おほんとき}】、\n<&𠮷。';
+  G.UI.say({ x, instant: true });
+  const text = () => d.querySelector('.gj-text');
+  const expected = text().innerHTML;
+  G.UI.say({ x });
+  assert.equal(text().textContent, '');
+  stepTimer(60);
+  const firstRuby = text().querySelector('em ruby'), caret = text().querySelector('.gj-caret');
+  assert.equal(firstRuby.querySelector('rt').textContent, 'おほんとき');
+  stepTimer(54);
+  assert.equal(text().querySelector('em ruby'), firstRuby);
+  assert.equal(text().querySelector('.gj-caret'), caret);
+  stepTimer(184);
+  assert.ok(text().querySelector('br'));
+  assert.equal(G.UI.finishTyping(), true);
+  assert.equal(text().querySelector('em ruby'), firstRuby);
+  assert.equal(text().innerHTML, expected);
+  assert.equal(pending.size, 0);
+  assert.equal(G.UI.finishTyping(), false);
+
+  G.UI.say({ x });
+  assert.equal(G.UI.finishTyping(), true, '最初の一字が出る前でも全文を表示できる');
+  assert.equal(text().innerHTML, expected);
+  G.UI.say({ x });
+  [60, 54, 184, 34, 34, 34, 34].forEach(stepTimer);
+  assert.equal(pending.size, 0);
+  assert.equal(text().innerHTML, expected, '最後まで待っても同じ本文になる');
+
+  G.UI.say({ x });
+  stepTimer(60);
+  G.UI.panel(false);
+  assert.equal(pending.size, 0);
+  assert.equal(text().querySelector('.gj-caret'), null, '本文の窓を閉じたらタイマーとカーソルを片づける');
+  w.close();
+});
